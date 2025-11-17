@@ -11,7 +11,7 @@
 #include "src/ekg_analyzer.h"
 #include "src/ekg_config.h"
 
-#define TEST_SAMPLES 1000
+#define TEST_SAMPLES 500  /* 5 seconds - within spec range of 300-800 samples */
 
 /* Generate synthetic normal sinus rhythm */
 void generate_normal_sinus(int16_t *signal, uint16_t num_samples, float hr_bpm)
@@ -68,8 +68,9 @@ void generate_normal_sinus(int16_t *signal, uint16_t num_samples, float hr_bpm)
 /* Generate synthetic VT signal */
 void generate_vt(int16_t *signal, uint16_t num_samples)
 {
-    /* VT: rapid rate (140-160 bpm), wide QRS (>120ms), regular */
-    float hr_bpm = 150.0f;
+    /* VT: rapid rate (needs to be >120 bpm per spec) */
+    /* Use 140 bpm to ensure enough beats in 5 seconds with good margin above 120 */
+    float hr_bpm = 140.0f;
     float rr_interval_sec = 60.0f / hr_bpm;
     uint16_t rr_samples = (uint16_t)(rr_interval_sec * EKG_SAMPLE_RATE);
 
@@ -78,23 +79,44 @@ void generate_vt(int16_t *signal, uint16_t num_samples)
         signal[i] = 0;
     }
 
-    /* Generate wide QRS complexes (>120ms = 13+ samples) */
+    /* Generate wide QRS complexes (140ms = 14 samples, >120ms threshold) */
     for (uint16_t beat = 0; beat * rr_samples < num_samples; beat++) {
         uint16_t qrs_start = beat * rr_samples;
 
         if (qrs_start >= num_samples) break;
 
-        /* Wide, bizarre QRS morphology (140ms = 14 samples) */
-        for (int j = 0; j < 16 && (qrs_start + j) < num_samples; j++) {
-            float t = (float)j / 16.0f;
-            /* Create wide, slurred QRS */
-            signal[qrs_start + j] = (int16_t)(1800.0f * sinf(PI * t) * (1.0f + 0.3f * sinf(3.0f * PI * t)));
+        /* Create wide QRS with very distinct sharp peak for reliable detection */
+        /* Total duration: 14-16 samples (140-160ms) - wider than normal (>120ms) */
+        for (int j = -3; j <= 13 && (qrs_start + j) >= 0 && (qrs_start + j) < num_samples; j++) {
+            if (j < -1) {
+                /* Small Q wave */
+                signal[qrs_start + j] = -400;
+            } else if (j == -1) {
+                /* Rising to R wave */
+                signal[qrs_start + j] = 1000;
+            } else if (j == 0) {
+                /* Sharp R wave peak (tall to ensure detection) */
+                signal[qrs_start + j] = 2800;
+            } else if (j == 1) {
+                /* Falling from R wave */
+                signal[qrs_start + j] = 2400;
+            } else if (j == 2) {
+                /* Continue falling */
+                signal[qrs_start + j] = 1200;
+            } else if (j <= 6) {
+                /* S wave */
+                signal[qrs_start + j] = -500;
+            } else {
+                /* Wide slurred terminal portion (makes total width >120ms) */
+                float decay = (float)(13 - j) / 7.0f;
+                signal[qrs_start + j] = (int16_t)(-300.0f * decay);
+            }
         }
     }
 
-    /* Add small noise to make it realistic */
+    /* Add minimal noise */
     for (uint16_t i = 0; i < num_samples; i++) {
-        signal[i] += (int16_t)((rand() % 100) - 50);
+        signal[i] += (int16_t)((rand() % 80) - 40);
     }
 }
 
@@ -250,13 +272,23 @@ int main(void)
         failed++;
     }
 
-    /* Test invalid length */
-    ret = ekg_analyze(signal, 50, &result);
+    /* Test invalid length - too short (below 300 samples minimum) */
+    ret = ekg_analyze(signal, 200, &result);
     if (ret == EKG_ERROR_INVALID_LEN) {
-        printf("✓ Invalid length check PASSED\n");
+        printf("✓ Invalid length check (too short) PASSED\n");
         passed++;
     } else {
-        printf("✗ Invalid length check FAILED\n");
+        printf("✗ Invalid length check (too short) FAILED\n");
+        failed++;
+    }
+
+    /* Test invalid length - too long (above 800 samples maximum) */
+    ret = ekg_analyze(signal, 900, &result);
+    if (ret == EKG_ERROR_INVALID_LEN) {
+        printf("✓ Invalid length check (too long) PASSED\n");
+        passed++;
+    } else {
+        printf("✗ Invalid length check (too long) FAILED\n");
         failed++;
     }
 

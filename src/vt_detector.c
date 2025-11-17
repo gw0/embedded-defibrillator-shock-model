@@ -70,8 +70,25 @@ int detect_vt(const float *filtered, uint16_t num_samples,
     /* Initialize result structure */
     memset(result, 0, sizeof(vt_detection_result_t));
 
+    /*
+     * VT Duration Requirement (Spec Section 4.1.2):
+     * "Criteria met continuously for at least 2 seconds"
+     *
+     * Approach: Verify that consecutive wide QRS complexes span at least 2 seconds.
+     * At minimum heart rate of 120 bpm for VT, we expect at least 4 beats in 2 seconds.
+     */
+
+    const uint16_t VT_DURATION_SAMPLES = 2 * sample_rate;  /* 2 seconds = 200 samples */
+
     /* Check if we have enough QRS complexes to analyze */
     if (qrs_result->count == 0 || qrs_result->rr_count == 0) {
+        result->vt_detected = 0;
+        result->confidence = 0.0f;
+        return EKG_SUCCESS;
+    }
+
+    /* Need at least 4 QRS complexes for 2-second VT (at 120 bpm) */
+    if (qrs_result->count < 4) {
         result->vt_detected = 0;
         result->confidence = 0.0f;
         return EKG_SUCCESS;
@@ -114,29 +131,49 @@ int detect_vt(const float *filtered, uint16_t num_samples,
                                          qrs_result->rr_count);
     result->rr_regularity = rr_cv;
 
-    /* Count consecutive wide QRS complexes (>120ms) */
-    uint8_t wide_count = 0;
+    /* Count consecutive wide QRS complexes (>120ms) and verify duration */
     uint8_t max_consecutive = 0;
     uint8_t current_consecutive = 0;
+    uint16_t current_run_start = 0;
+    uint16_t max_run_duration_samples = 0;
 
     for (uint8_t i = 0; i < num_qrs; i++) {
         if (qrs_widths[i] > VT_QRS_WIDTH_MS) {
+            if (current_consecutive == 0) {
+                /* Start of a new run */
+                current_run_start = qrs_result->locations[i];
+            }
             current_consecutive++;
-            wide_count++;
         } else {
-            if (current_consecutive > max_consecutive) {
-                max_consecutive = current_consecutive;
+            if (current_consecutive > 0) {
+                /* End of a run - calculate duration */
+                uint16_t run_end = qrs_result->locations[i - 1];
+                uint16_t run_duration = run_end - current_run_start;
+
+                if (current_consecutive > max_consecutive) {
+                    max_consecutive = current_consecutive;
+                    max_run_duration_samples = run_duration;
+                }
             }
             current_consecutive = 0;
         }
     }
 
-    /* Check final consecutive count */
-    if (current_consecutive > max_consecutive) {
-        max_consecutive = current_consecutive;
+    /* Check final run */
+    if (current_consecutive > 0) {
+        uint16_t run_end = qrs_result->locations[num_qrs - 1];
+        uint16_t run_duration = run_end - current_run_start;
+
+        if (current_consecutive > max_consecutive) {
+            max_consecutive = current_consecutive;
+            max_run_duration_samples = run_duration;
+        }
     }
 
     result->wide_qrs_count = max_consecutive;
+
+    /* Verify duration: consecutive wide QRS must span >= 2 seconds */
+    uint8_t duration_met = (max_run_duration_samples >= VT_DURATION_SAMPLES) ? 1 : 0;
 
     /*
      * VT Decision Logic with scoring:
@@ -172,13 +209,13 @@ int detect_vt(const float *filtered, uint16_t num_samples,
         vt_score += 0.1f;
     }
 
-    /* Criterion 4: Sustained (≥3 consecutive wide QRS) */
-    if (max_consecutive >= VT_MIN_CONSECUTIVE) {
+    /* Criterion 4: Sustained (≥3 consecutive wide QRS spanning ≥2 seconds) */
+    if (max_consecutive >= VT_MIN_CONSECUTIVE && duration_met) {
         vt_score += 0.2f;
     }
 
-    /* VT detected if score >= threshold */
-    if (vt_score >= VT_CONFIDENCE_THRESHOLD) {
+    /* VT detected if score >= threshold AND duration requirement met */
+    if (vt_score >= VT_CONFIDENCE_THRESHOLD && duration_met) {
         result->vt_detected = 1;
         result->confidence = vt_score;
     } else {

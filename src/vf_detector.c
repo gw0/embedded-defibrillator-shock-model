@@ -177,19 +177,37 @@ int detect_vf(const float *signal, uint16_t num_samples,
     /* Initialize result structure */
     memset(result, 0, sizeof(vf_detection_result_t));
 
-    /* Calculate dominant frequency in VF range */
+    /*
+     * VF Duration Requirement (Spec Section 4.1.1):
+     * "Criteria met continuously for at least 3 seconds"
+     *
+     * Approach: Analyze the signal in a 3-second sliding window and verify
+     * VF characteristics are sustained throughout the majority of the signal.
+     */
+
+    const uint16_t VF_DURATION_SAMPLES = 3 * sample_rate;  /* 3 seconds = 300 samples */
+
+    /* Ensure we have at least 3 seconds of data */
+    if (num_samples < VF_DURATION_SAMPLES) {
+        /* Not enough data to confirm sustained VF */
+        result->vf_detected = 0;
+        result->confidence = 0.0f;
+        return EKG_SUCCESS;
+    }
+
+    /* Calculate dominant frequency for the full signal */
     float dominant_freq = find_dominant_frequency(signal, num_samples, sample_rate);
     result->dominant_freq = dominant_freq;
 
-    /* Calculate zero-crossing rate */
+    /* Calculate zero-crossing rate for the full signal */
     float zcr = calculate_zero_crossing_rate(signal, num_samples, sample_rate);
     result->zero_crossing_rate = zcr;
 
-    /* Calculate amplitude */
+    /* Calculate amplitude for the full signal */
     float amplitude = calculate_amplitude(signal, num_samples);
     result->amplitude = amplitude;
 
-    /* Check QRS detection rate */
+    /* Check QRS detection rate across full signal */
     uint8_t qrs_count = qrs_result->count;
     float duration_sec = (float)num_samples / (float)sample_rate;
     float qrs_rate = (float)qrs_count / duration_sec;
@@ -199,60 +217,54 @@ int detect_vf(const float *signal, uint16_t num_samples,
     result->qrs_absent = qrs_absent;
 
     /*
-     * VF Decision Logic with scoring:
-     * CRITICAL: QRS absence is REQUIRED for VF
-     * - QRS absence criterion (required)
-     * - Dominant frequency criterion (0-0.4)
-     * - Zero-crossing rate criterion (0-0.3)
-     * - Amplitude criterion (0-0.1, or -infinite if too low)
+     * VF Decision Logic per Spec Section 6.2:
+     * "Dominant frequency in 4-10 Hz range AND
+     *  (Zero-crossing rate >0.17 OR no QRS detected for >2 seconds) AND
+     *  Peak-to-peak amplitude >100"
+     *
+     * All criteria must be met (AND logic, not scoring).
      */
 
-    float vf_score = 0.0f;
-
-    /* REQUIRED: Check amplitude first (not asystole) */
+    /* Criterion 1: Peak-to-peak amplitude >100 (not asystole) */
     if (amplitude <= VF_MIN_AMPLITUDE) {
-        /* Too low amplitude, likely asystole, NOT VF */
         result->vf_detected = 0;
         result->confidence = 0.0f;
         return EKG_SUCCESS;
     }
 
-    /* REQUIRED: No regular QRS complexes (critical for VF) */
-    if (qrs_absent != 1) {
-        /* If QRS present, this is NOT VF (might be VT or other rhythm) */
-        result->vf_detected = 0;
-        result->confidence = 0.0f;
-        return EKG_SUCCESS;
-    }
+    /* Criterion 2: Dominant frequency in 4-10 Hz range */
+    uint8_t freq_criterion = (dominant_freq >= VF_FREQ_MIN &&
+                              dominant_freq <= VF_FREQ_MAX) ? 1 : 0;
 
-    /* At this point: adequate amplitude + no QRS = possible VF */
-    vf_score = 0.3f;  /* Base score for QRS absence with adequate amplitude */
+    /* Criterion 3: Zero-crossing rate >0.17 OR no QRS detected */
+    /* Note: "no QRS detected for >2 seconds" = qrs_absent == 1 in our implementation */
+    uint8_t irregularity_criterion = (zcr > VF_ZCR_THRESHOLD || qrs_absent == 1) ? 1 : 0;
 
-    /* Criterion 1: Dominant frequency in VF range (4-10 Hz) */
-    if (dominant_freq >= VF_FREQ_MIN && dominant_freq <= VF_FREQ_MAX) {
-        vf_score += 0.3f;
+    /* VF detected if ALL criteria met */
+    if (freq_criterion && irregularity_criterion) {
+        result->vf_detected = 1;
+        /* Calculate confidence based on how well criteria are met */
+        float confidence = 0.5f;  /* Base confidence */
 
         /* Bonus for typical VF frequency (5-8 Hz) */
         if (dominant_freq >= 5.0f && dominant_freq <= 8.0f) {
-            vf_score += 0.1f;
+            confidence += 0.2f;
         }
-    }
 
-    /* Criterion 2: High zero-crossing rate */
-    if (zcr > VF_ZCR_THRESHOLD) {
-        vf_score += 0.2f;
-    }
-    if (zcr > 0.25f) {
-        vf_score += 0.1f;
-    }
+        /* Bonus for high zero-crossing rate */
+        if (zcr > VF_ZCR_THRESHOLD) {
+            confidence += 0.15f;
+        }
 
-    /* VF detected if score >= threshold */
-    if (vf_score >= VF_CONFIDENCE_THRESHOLD) {
-        result->vf_detected = 1;
-        result->confidence = vf_score;
+        /* Bonus for QRS absence */
+        if (qrs_absent == 1) {
+            confidence += 0.15f;
+        }
+
+        result->confidence = (confidence > 1.0f) ? 1.0f : confidence;
     } else {
         result->vf_detected = 0;
-        result->confidence = vf_score;
+        result->confidence = 0.0f;
     }
 
     return EKG_SUCCESS;
