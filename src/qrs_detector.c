@@ -130,6 +130,22 @@ void detect_qrs_peaks(const float *integrated, uint16_t num_samples,
     float THRESHOLD_I1 = NPKI + QRS_THRESHOLD_FACTOR * (SPKI - NPKI);
     float THRESHOLD_I2 = 0.5f * THRESHOLD_I1;
 
+    /* Minimum threshold to avoid detecting pure noise */
+    /* Require significant signal energy - if max is low, likely just noise/asystole */
+    const float MIN_SIGNAL_ENERGY = 100.0f;
+    if (max_val < MIN_SIGNAL_ENERGY) {
+        /* Signal too weak, likely noise/asystole - return no detections */
+        result->count = 0;
+        result->rr_count = 0;
+        return;
+    }
+
+    const float MIN_DETECTION_THRESHOLD = 80.0f;
+    if (THRESHOLD_I1 < MIN_DETECTION_THRESHOLD) {
+        THRESHOLD_I1 = MIN_DETECTION_THRESHOLD;
+        THRESHOLD_I2 = 0.5f * THRESHOLD_I1;
+    }
+
     uint16_t last_qrs_location = 0;
     const float learning_rate = QRS_LEARNING_RATE;
 

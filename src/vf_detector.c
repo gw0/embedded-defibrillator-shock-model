@@ -200,17 +200,37 @@ int detect_vf(const float *signal, uint16_t num_samples,
 
     /*
      * VF Decision Logic with scoring:
-     * - Dominant frequency criterion (0-0.5)
+     * CRITICAL: QRS absence is REQUIRED for VF
+     * - QRS absence criterion (required)
+     * - Dominant frequency criterion (0-0.4)
      * - Zero-crossing rate criterion (0-0.3)
-     * - QRS absence criterion (0-0.3)
      * - Amplitude criterion (0-0.1, or -infinite if too low)
      */
 
     float vf_score = 0.0f;
 
+    /* REQUIRED: Check amplitude first (not asystole) */
+    if (amplitude <= VF_MIN_AMPLITUDE) {
+        /* Too low amplitude, likely asystole, NOT VF */
+        result->vf_detected = 0;
+        result->confidence = 0.0f;
+        return EKG_SUCCESS;
+    }
+
+    /* REQUIRED: No regular QRS complexes (critical for VF) */
+    if (qrs_absent != 1) {
+        /* If QRS present, this is NOT VF (might be VT or other rhythm) */
+        result->vf_detected = 0;
+        result->confidence = 0.0f;
+        return EKG_SUCCESS;
+    }
+
+    /* At this point: adequate amplitude + no QRS = possible VF */
+    vf_score = 0.3f;  /* Base score for QRS absence with adequate amplitude */
+
     /* Criterion 1: Dominant frequency in VF range (4-10 Hz) */
     if (dominant_freq >= VF_FREQ_MIN && dominant_freq <= VF_FREQ_MAX) {
-        vf_score += 0.4f;
+        vf_score += 0.3f;
 
         /* Bonus for typical VF frequency (5-8 Hz) */
         if (dominant_freq >= 5.0f && dominant_freq <= 8.0f) {
@@ -224,21 +244,6 @@ int detect_vf(const float *signal, uint16_t num_samples,
     }
     if (zcr > 0.25f) {
         vf_score += 0.1f;
-    }
-
-    /* Criterion 3: No regular QRS complexes */
-    if (qrs_absent == 1) {
-        vf_score += 0.3f;
-    } else if (qrs_count < 5 && duration_sec >= 5.0f) {
-        vf_score += 0.1f;  /* Very few QRS (possibly coarse VF) */
-    }
-
-    /* Criterion 4: Adequate amplitude (not asystole) */
-    if (amplitude > VF_MIN_AMPLITUDE) {
-        vf_score += 0.1f;
-    } else {
-        /* Too low amplitude, likely asystole, NOT VF */
-        vf_score = 0.0f;
     }
 
     /* VF detected if score >= threshold */
