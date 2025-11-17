@@ -21,7 +21,7 @@
 #define EKG_ANALYSIS_WINDOW   500    /* 5 seconds recommended */
 
 /* QRS Detection (Pan-Tompkins) */
-#define QRS_REFRACTORY_MS     200    /* ms */
+#define QRS_REFRACTORY_MS     120    /* ms - allows detection of VT at up to 250 bpm */
 #define QRS_REFRACTORY_SAMPLES (QRS_REFRACTORY_MS * EKG_SAMPLE_RATE / 1000)  /* 20 */
 #define QRS_INTEGRATION_MS    150    /* ms */
 #define QRS_INTEGRATION_SAMPLES (QRS_INTEGRATION_MS * EKG_SAMPLE_RATE / 1000)  /* 15 */

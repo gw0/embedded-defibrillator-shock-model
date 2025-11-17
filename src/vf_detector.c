@@ -223,6 +223,11 @@ int detect_vf(const float *signal, uint16_t num_samples,
      *  Peak-to-peak amplitude >100"
      *
      * All criteria must be met (AND logic, not scoring).
+     *
+     * IMPORTANT: To distinguish VF from VT with wide QRS:
+     * - VT has organized QRS complexes (>1 QRS/sec) at regular intervals
+     * - VF has chaotic activity with few or no organized QRS (<0.5 QRS/sec)
+     * - If QRS rate > 1.0/sec, likely VT not VF (even with high frequency content)
      */
 
     /* Criterion 1: Peak-to-peak amplitude >100 (not asystole) */
@@ -240,8 +245,14 @@ int detect_vf(const float *signal, uint16_t num_samples,
     /* Note: "no QRS detected for >2 seconds" = qrs_absent == 1 in our implementation */
     uint8_t irregularity_criterion = (zcr > VF_ZCR_THRESHOLD || qrs_absent == 1) ? 1 : 0;
 
+    /*
+     * Criterion 4: Exclude organized rhythms (VT)
+     * If QRS rate > 1.0/sec, we have an organized rhythm, likely VT not VF
+     */
+    uint8_t not_organized = (qrs_rate <= 1.0f) ? 1 : 0;
+
     /* VF detected if ALL criteria met */
-    if (freq_criterion && irregularity_criterion) {
+    if (freq_criterion && irregularity_criterion && not_organized) {
         result->vf_detected = 1;
         /* Calculate confidence based on how well criteria are met */
         float confidence = 0.5f;  /* Base confidence */

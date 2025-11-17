@@ -19,34 +19,56 @@ float measure_qrs_width(const float *signal, uint16_t qrs_loc,
     }
 
     /*
-     * Measure QRS complex width:
+     * Measure QRS complex width using derivative-based method:
      * 1. Find QRS peak amplitude
-     * 2. Calculate threshold (20% of peak)
-     * 3. Search backward for QRS onset
-     * 4. Search forward for QRS end
+     * 2. Search backward for onset (where signal starts rising rapidly)
+     * 3. Search forward for end (where signal returns to baseline)
+     * 4. Limit search window to realistic QRS duration (20-200ms)
      * 5. Calculate width in milliseconds
+     *
+     * This method is more robust to bandpass filter effects than simple threshold.
      */
+
+    /* Maximum search window: 200ms = 20 samples at 100Hz */
+    const uint16_t MAX_QRS_SAMPLES = (200 * sample_rate) / 1000;
+
+    /* Minimum baseline threshold (to avoid noise) */
+    const float BASELINE_THRESHOLD = 50.0f;
 
     /* Find peak amplitude at QRS location */
     float peak_amp = fabsf(signal[qrs_loc]);
 
-    /* Calculate threshold (20% of peak) */
-    float threshold = 0.2f * peak_amp;
+    /* Calculate onset threshold (30% of peak, higher than before for robustness) */
+    float onset_threshold = 0.3f * peak_amp;
+    if (onset_threshold < BASELINE_THRESHOLD) {
+        onset_threshold = BASELINE_THRESHOLD;
+    }
 
-    /* Search backward for QRS onset */
+    /* Search backward for QRS onset (limit search to MAX_QRS_SAMPLES) */
     uint16_t onset = qrs_loc;
-    while (onset > 0 && fabsf(signal[onset]) > threshold) {
+    uint16_t search_limit = (qrs_loc > MAX_QRS_SAMPLES) ? (qrs_loc - MAX_QRS_SAMPLES) : 0;
+
+    while (onset > search_limit && fabsf(signal[onset]) > onset_threshold) {
         onset--;
     }
 
-    /* Search forward for QRS end */
+    /* Search forward for QRS end (limit search to MAX_QRS_SAMPLES) */
     uint16_t end = qrs_loc;
-    while (end < num_samples - 1 && fabsf(signal[end]) > threshold) {
+    uint16_t end_limit = (qrs_loc + MAX_QRS_SAMPLES < num_samples) ?
+                         (qrs_loc + MAX_QRS_SAMPLES) : (num_samples - 1);
+
+    while (end < end_limit && fabsf(signal[end]) > onset_threshold) {
         end++;
     }
 
     /* Calculate width in samples */
     uint16_t width_samples = end - onset;
+
+    /* Sanity check: QRS width should be at least 20ms */
+    const uint16_t MIN_QRS_SAMPLES = (20 * sample_rate) / 1000;
+    if (width_samples < MIN_QRS_SAMPLES) {
+        width_samples = MIN_QRS_SAMPLES;
+    }
 
     /* Convert to milliseconds */
     float width_ms = ((float)width_samples / (float)sample_rate) * 1000.0f;
@@ -54,12 +76,12 @@ float measure_qrs_width(const float *signal, uint16_t qrs_loc,
     return width_ms;
 }
 
-int detect_vt(const float *filtered, uint16_t num_samples,
+int detect_vt(const float *filtered, const float *raw, uint16_t num_samples,
              const qrs_detection_result_t *qrs_result,
              uint16_t sample_rate,
              vt_detection_result_t *result)
 {
-    if (filtered == NULL || qrs_result == NULL || result == NULL) {
+    if (filtered == NULL || raw == NULL || qrs_result == NULL || result == NULL) {
         return EKG_ERROR_NULL_PTR;
     }
 
@@ -100,19 +122,13 @@ int detect_vt(const float *filtered, uint16_t num_samples,
                                             sample_rate);
     result->heart_rate = heart_rate;
 
-    /* If heart rate <= 120 bpm, not VT */
-    if (heart_rate <= VT_HR_THRESHOLD) {
-        result->vt_detected = 0;
-        result->confidence = 0.0f;
-        return EKG_SUCCESS;
-    }
-
-    /* Measure QRS width for each detected QRS */
+    /* Measure QRS width for each detected QRS (use raw signal, not filtered) */
+    /* Do this BEFORE early return so diagnostic info is available */
     float qrs_widths[50];
     uint8_t num_qrs = qrs_result->count < 50 ? qrs_result->count : 50;
 
     for (uint8_t i = 0; i < num_qrs; i++) {
-        qrs_widths[i] = measure_qrs_width(filtered,
+        qrs_widths[i] = measure_qrs_width(raw,
                                           qrs_result->locations[i],
                                           num_samples,
                                           sample_rate);
@@ -125,6 +141,13 @@ int detect_vt(const float *filtered, uint16_t num_samples,
     }
     float mean_qrs_width = sum_width / (float)num_qrs;
     result->mean_qrs_width = mean_qrs_width;
+
+    /* If heart rate <= 120 bpm, not VT */
+    if (heart_rate <= VT_HR_THRESHOLD) {
+        result->vt_detected = 0;
+        result->confidence = 0.0f;
+        return EKG_SUCCESS;
+    }
 
     /* Calculate R-R regularity (coefficient of variation) */
     float rr_cv = calculate_rr_regularity(qrs_result->rr_intervals,

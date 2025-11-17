@@ -93,7 +93,7 @@ int ekg_analyze(const int16_t *samples,
     /* Step 3: VT Detection */
 
     vt_detection_result_t vt_result;
-    detect_vt(filtered, num_samples, &qrs_result, EKG_SAMPLE_RATE, &vt_result);
+    detect_vt(filtered, signal, num_samples, &qrs_result, EKG_SAMPLE_RATE, &vt_result);
 
     /* Step 4: VF Detection */
 

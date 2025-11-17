@@ -39,14 +39,15 @@ float measure_qrs_width(const float *signal, uint16_t qrs_loc,
 /**
  * Detect Ventricular Tachycardia
  *
- * @param filtered     Filtered EKG signal
+ * @param filtered     Filtered EKG signal (for detection)
+ * @param raw          Raw/DC-removed EKG signal (for width measurement)
  * @param num_samples  Number of samples
  * @param qrs_result   QRS detection results
  * @param sample_rate  Sample rate in Hz
  * @param result       Structure to store VT detection results
  * @return             0 on success, negative on error
  */
-int detect_vt(const float *filtered, uint16_t num_samples,
+int detect_vt(const float *filtered, const float *raw, uint16_t num_samples,
              const qrs_detection_result_t *qrs_result,
              uint16_t sample_rate,
              vt_detection_result_t *result);
