@@ -9,8 +9,8 @@
 #include <math.h>
 #include <string.h>
 #include <time.h>
-#include "src/ekg_analyzer.h"
-#include "src/ekg_config.h"
+#include "../src/ekg_analyzer.h"
+#include "../src/ekg_config.h"
 
 #define TEST_SAMPLES 500  /* 5 seconds - within spec range of 300-800 samples */
 
@@ -160,7 +160,8 @@ void generate_asystole(int16_t *signal, uint16_t num_samples)
 void print_result(const char *test_name, const ekg_analysis_result_t *result)
 {
     printf("\n=== %s ===\n", test_name);
-    printf("Shock advised: %s\n", result->shock_advised ? "YES" : "NO");
+    printf("SHOCK ADVISED: %s\n", result->shock_advised ? "YES" : "NO");
+    printf("Confidence: %d%%\n", result->confidence);
     printf("Rhythm type: ");
     switch (result->rhythm_type) {
         case 0: printf("Unknown/Indeterminate\n"); break;
@@ -170,7 +171,6 @@ void print_result(const char *test_name, const ekg_analysis_result_t *result)
         case 4: printf("Other (Non-shockable)\n"); break;
         default: printf("Invalid\n");
     }
-    printf("Confidence: %d%%\n", result->confidence);
     printf("Heart rate: %d bpm\n", result->heart_rate);
     printf("QRS detected: %d\n", result->num_qrs_detected);
     printf("Dominant freq: %.2f Hz\n", result->dominant_freq);

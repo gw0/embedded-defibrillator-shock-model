@@ -72,9 +72,9 @@ clean:
 	rm -rf $(OBJ_DIR) $(BIN_DIR)
 
 # Test programs
-TEST_SOURCES = test_signal_processing.c
+TEST_SOURCES = tests/test_signal_processing.c
 TEST_TARGET = $(BIN_DIR)/test_signal_processing
-INTEGRATION_TEST_SOURCES = test_ekg_analyzer.c
+INTEGRATION_TEST_SOURCES = tests/test_ekg_analyzer.c
 INTEGRATION_TEST_TARGET = $(BIN_DIR)/test_ekg_analyzer
 
 .PHONY: test

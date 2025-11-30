@@ -10,8 +10,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
-#include "src/signal_processing.h"
-#include "src/ekg_config.h"
+#include "../src/signal_processing.h"
+#include "../src/ekg_config.h"
 
 #define TEST_SAMPLES 500
 #define SAMPLE_RATE 100
