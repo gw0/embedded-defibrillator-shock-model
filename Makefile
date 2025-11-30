@@ -91,6 +91,17 @@ $(TEST_TARGET): $(TEST_SOURCES) $(HOST_OBJECTS) | $(BIN_DIR)
 $(INTEGRATION_TEST_TARGET): $(INTEGRATION_TEST_SOURCES) $(HOST_OBJECTS) | $(BIN_DIR)
 	$(HOST_CC) $(HOST_CFLAGS) $(INTEGRATION_TEST_SOURCES) $(HOST_OBJECTS) -o $@ -lm
 
+# CSV Analyzer Tool
+TOOLS_DIR = tools
+CSV_TOOL_SOURCE = $(TOOLS_DIR)/ekg_csv.c
+CSV_TOOL_TARGET = $(BIN_DIR)/ekg_csv
+
+.PHONY: ekg_csv
+ekg_csv: $(CSV_TOOL_TARGET)
+
+$(CSV_TOOL_TARGET): $(CSV_TOOL_SOURCE) $(HOST_OBJECTS) | $(BIN_DIR)
+	$(HOST_CC) $(HOST_CFLAGS) $(CSV_TOOL_SOURCE) $(HOST_OBJECTS) -o $@ -lm
+
 # Show help
 .PHONY: help
 help:
@@ -101,10 +112,12 @@ help:
 	@echo "  host          - Build for host system"
 	@echo "  arm           - Build for ARM Cortex-M33"
 	@echo "  test          - Build and run verification tests"
+	@echo "  ekg_csv       - Build CSV analyzer tool"
 	@echo "  clean         - Remove build artifacts"
 	@echo "  help          - Show this help message"
 	@echo ""
 	@echo "Output:"
-	@echo "  Host: $(HOST_TARGET) (static library)"
-	@echo "  ARM:  $(ARM_TARGET) (static library)"
-	@echo "  Test: $(TEST_TARGET)"
+	@echo "  Host:     $(HOST_TARGET) (static library)"
+	@echo "  ARM:      $(ARM_TARGET) (static library)"
+	@echo "  Test:     $(TEST_TARGET), $(INTEGRATION_TEST_TARGET)"
+	@echo "  CSV Tool: $(CSV_TOOL_TARGET)"
