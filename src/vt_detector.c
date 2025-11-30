@@ -79,6 +79,7 @@ float measure_qrs_width(const float *signal, uint16_t qrs_loc,
 int detect_vt(const float *filtered, const float *raw, uint16_t num_samples,
              const qrs_detection_result_t *qrs_result,
              uint16_t sample_rate,
+             const ekg_config_t *config,
              vt_detection_result_t *result)
 {
     if (filtered == NULL || raw == NULL || qrs_result == NULL || result == NULL) {
@@ -87,6 +88,11 @@ int detect_vt(const float *filtered, const float *raw, uint16_t num_samples,
 
     if (num_samples < EKG_MIN_SAMPLES || num_samples > EKG_MAX_SAMPLES) {
         return EKG_ERROR_INVALID_LEN;
+    }
+
+    /* Use default config if NULL */
+    if (config == NULL) {
+        config = &EKG_DEFAULT_CONFIG;
     }
 
     /* Initialize result structure */
@@ -142,8 +148,8 @@ int detect_vt(const float *filtered, const float *raw, uint16_t num_samples,
     float mean_qrs_width = sum_width / (float)num_qrs;
     result->mean_qrs_width = mean_qrs_width;
 
-    /* If heart rate <= 120 bpm, not VT */
-    if (heart_rate <= VT_HR_THRESHOLD) {
+    /* If heart rate <= threshold bpm, not VT */
+    if (heart_rate <= config->vt_hr_threshold) {
         result->vt_detected = 0;
         result->confidence = 0.0f;
         return EKG_SUCCESS;
@@ -161,7 +167,7 @@ int detect_vt(const float *filtered, const float *raw, uint16_t num_samples,
     uint16_t max_run_duration_samples = 0;
 
     for (uint8_t i = 0; i < num_qrs; i++) {
-        if (qrs_widths[i] > VT_QRS_WIDTH_MS) {
+        if (qrs_widths[i] > config->vt_qrs_width_ms) {
             if (current_consecutive == 0) {
                 /* Start of a new run */
                 current_run_start = qrs_result->locations[i];
@@ -209,7 +215,7 @@ int detect_vt(const float *filtered, const float *raw, uint16_t num_samples,
     float vt_score = 0.0f;
 
     /* Criterion 1: Heart rate */
-    if (heart_rate > VT_HR_THRESHOLD) {
+    if (heart_rate > config->vt_hr_threshold) {
         vt_score += 0.3f;
     }
     if (heart_rate > 150.0f) {
@@ -217,7 +223,7 @@ int detect_vt(const float *filtered, const float *raw, uint16_t num_samples,
     }
 
     /* Criterion 2: QRS width */
-    if (mean_qrs_width > VT_QRS_WIDTH_MS) {
+    if (mean_qrs_width > config->vt_qrs_width_ms) {
         vt_score += 0.3f;
     }
     if (mean_qrs_width > 140.0f) {
@@ -225,7 +231,7 @@ int detect_vt(const float *filtered, const float *raw, uint16_t num_samples,
     }
 
     /* Criterion 3: Regularity */
-    if (rr_cv < VT_REGULARITY_CV) {
+    if (rr_cv < config->vt_regularity_cv) {
         vt_score += 0.2f;
     }
     if (rr_cv < 10.0f) {
@@ -238,7 +244,7 @@ int detect_vt(const float *filtered, const float *raw, uint16_t num_samples,
     }
 
     /* VT detected if score >= threshold AND duration requirement met */
-    if (vt_score >= VT_CONFIDENCE_THRESHOLD && duration_met) {
+    if (vt_score >= config->vt_confidence_threshold && duration_met) {
         result->vt_detected = 1;
         result->confidence = vt_score;
     } else {

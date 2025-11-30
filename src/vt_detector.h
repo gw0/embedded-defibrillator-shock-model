@@ -9,6 +9,7 @@
 
 #include <stdint.h>
 #include "qrs_detector.h"
+#include "ekg_config.h"
 
 /**
  * VT Detection Result Structure
@@ -44,12 +45,14 @@ float measure_qrs_width(const float *signal, uint16_t qrs_loc,
  * @param num_samples  Number of samples
  * @param qrs_result   QRS detection results
  * @param sample_rate  Sample rate in Hz
+ * @param config       Configuration parameters (NULL = use defaults)
  * @param result       Structure to store VT detection results
  * @return             0 on success, negative on error
  */
 int detect_vt(const float *filtered, const float *raw, uint16_t num_samples,
              const qrs_detection_result_t *qrs_result,
              uint16_t sample_rate,
+             const ekg_config_t *config,
              vt_detection_result_t *result);
 
 #endif /* VT_DETECTOR_H */

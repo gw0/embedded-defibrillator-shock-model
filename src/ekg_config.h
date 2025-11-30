@@ -84,4 +84,38 @@ static const float VF_TEST_FREQS[VF_NUM_TEST_FREQS] =
 #define PI 3.14159265358979323846f
 #endif
 
+/**
+ * Runtime Configuration Structure
+ *
+ * Allows dynamic parameter tuning for training/optimization.
+ * If NULL is passed to ekg_analyze(), EKG_DEFAULT_CONFIG is used.
+ */
+typedef struct {
+    /* VT Detection Parameters */
+    float vt_hr_threshold;         /* bpm */
+    float vt_qrs_width_ms;         /* ms */
+    float vt_regularity_cv;        /* percent */
+    float vt_confidence_threshold; /* 0.0-1.0 */
+
+    /* VF Detection Parameters */
+    float vf_freq_min;             /* Hz */
+    float vf_freq_max;             /* Hz */
+    float vf_zcr_threshold;        /* zero-crossing rate */
+    float vf_confidence_threshold; /* 0.0-1.0 */
+    float vf_min_amplitude;        /* minimum amplitude */
+} ekg_config_t;
+
+/* Default configuration (used when NULL passed to ekg_analyze) */
+static const ekg_config_t EKG_DEFAULT_CONFIG = {
+    .vt_hr_threshold = VT_HR_THRESHOLD,
+    .vt_qrs_width_ms = VT_QRS_WIDTH_MS,
+    .vt_regularity_cv = VT_REGULARITY_CV,
+    .vt_confidence_threshold = VT_CONFIDENCE_THRESHOLD,
+    .vf_freq_min = VF_FREQ_MIN,
+    .vf_freq_max = VF_FREQ_MAX,
+    .vf_zcr_threshold = VF_ZCR_THRESHOLD,
+    .vf_confidence_threshold = VF_CONFIDENCE_THRESHOLD,
+    .vf_min_amplitude = VF_MIN_AMPLITUDE
+};
+
 #endif /* EKG_CONFIG_H */

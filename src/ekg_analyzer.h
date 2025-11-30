@@ -11,6 +11,7 @@
 #define EKG_ANALYZER_H
 
 #include <stdint.h>
+#include "ekg_config.h"
 
 /**
  * EKG Analysis Result Structure
@@ -36,6 +37,7 @@ typedef struct {
  * @param samples     Pointer to array of EKG samples (int16_t)
  * @param num_samples Number of samples in array (200-1000)
  * @param result      Pointer to structure to store analysis results
+ * @param config      Optional config (NULL = use defaults from EKG_DEFAULT_CONFIG)
  * @return            0 on success, negative error code on failure
  *
  * Error codes:
@@ -47,6 +49,7 @@ typedef struct {
  */
 int ekg_analyze(const int16_t *samples,
                 uint16_t num_samples,
-                ekg_analysis_result_t *result);
+                ekg_analysis_result_t *result,
+                const ekg_config_t *config);
 
 #endif /* EKG_ANALYZER_H */

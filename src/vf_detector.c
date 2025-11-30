@@ -164,6 +164,7 @@ float calculate_amplitude(const float *signal, uint16_t num_samples)
 int detect_vf(const float *signal, uint16_t num_samples,
              const qrs_detection_result_t *qrs_result,
              uint16_t sample_rate,
+             const ekg_config_t *config,
              vf_detection_result_t *result)
 {
     if (signal == NULL || qrs_result == NULL || result == NULL) {
@@ -172,6 +173,11 @@ int detect_vf(const float *signal, uint16_t num_samples,
 
     if (num_samples < EKG_MIN_SAMPLES || num_samples > EKG_MAX_SAMPLES) {
         return EKG_ERROR_INVALID_LEN;
+    }
+
+    /* Use default config if NULL */
+    if (config == NULL) {
+        config = &EKG_DEFAULT_CONFIG;
     }
 
     /* Initialize result structure */
@@ -230,20 +236,20 @@ int detect_vf(const float *signal, uint16_t num_samples,
      * - If QRS rate > 1.0/sec, likely VT not VF (even with high frequency content)
      */
 
-    /* Criterion 1: Peak-to-peak amplitude >100 (not asystole) */
-    if (amplitude <= VF_MIN_AMPLITUDE) {
+    /* Criterion 1: Peak-to-peak amplitude threshold (not asystole) */
+    if (amplitude <= config->vf_min_amplitude) {
         result->vf_detected = 0;
         result->confidence = 0.0f;
         return EKG_SUCCESS;
     }
 
-    /* Criterion 2: Dominant frequency in 4-10 Hz range */
-    uint8_t freq_criterion = (dominant_freq >= VF_FREQ_MIN &&
-                              dominant_freq <= VF_FREQ_MAX) ? 1 : 0;
+    /* Criterion 2: Dominant frequency in configured Hz range */
+    uint8_t freq_criterion = (dominant_freq >= config->vf_freq_min &&
+                              dominant_freq <= config->vf_freq_max) ? 1 : 0;
 
-    /* Criterion 3: Zero-crossing rate >0.17 OR no QRS detected */
+    /* Criterion 3: Zero-crossing rate threshold OR no QRS detected */
     /* Note: "no QRS detected for >2 seconds" = qrs_absent == 1 in our implementation */
-    uint8_t irregularity_criterion = (zcr > VF_ZCR_THRESHOLD || qrs_absent == 1) ? 1 : 0;
+    uint8_t irregularity_criterion = (zcr > config->vf_zcr_threshold || qrs_absent == 1) ? 1 : 0;
 
     /*
      * Criterion 4: Exclude organized rhythms (VT)
@@ -263,7 +269,7 @@ int detect_vf(const float *signal, uint16_t num_samples,
         }
 
         /* Bonus for high zero-crossing rate */
-        if (zcr > VF_ZCR_THRESHOLD) {
+        if (zcr > config->vf_zcr_threshold) {
             confidence += 0.15f;
         }
 

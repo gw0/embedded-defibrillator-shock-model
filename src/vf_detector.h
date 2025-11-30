@@ -9,6 +9,7 @@
 
 #include <stdint.h>
 #include "qrs_detector.h"
+#include "ekg_config.h"
 
 /**
  * VF Detection Result Structure
@@ -74,12 +75,14 @@ float calculate_amplitude(const float *signal, uint16_t num_samples);
  * @param num_samples  Number of samples
  * @param qrs_result   QRS detection results
  * @param sample_rate  Sample rate in Hz
+ * @param config       Configuration parameters (NULL = use defaults)
  * @param result       Structure to store VF detection results
  * @return             0 on success, negative on error
  */
 int detect_vf(const float *signal, uint16_t num_samples,
              const qrs_detection_result_t *qrs_result,
              uint16_t sample_rate,
+             const ekg_config_t *config,
              vf_detection_result_t *result);
 
 #endif /* VF_DETECTOR_H */

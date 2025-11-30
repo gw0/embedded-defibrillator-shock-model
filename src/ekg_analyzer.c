@@ -16,7 +16,8 @@
 
 int ekg_analyze(const int16_t *samples,
                 uint16_t num_samples,
-                ekg_analysis_result_t *result)
+                ekg_analysis_result_t *result,
+                const ekg_config_t *config)
 {
     /* Input validation */
     if (samples == NULL || result == NULL) {
@@ -25,6 +26,11 @@ int ekg_analyze(const int16_t *samples,
 
     if (num_samples < EKG_MIN_SAMPLES || num_samples > EKG_MAX_SAMPLES) {
         return EKG_ERROR_INVALID_LEN;
+    }
+
+    /* Use default config if NULL */
+    if (config == NULL) {
+        config = &EKG_DEFAULT_CONFIG;
     }
 
     /* Check for saturated signal */
@@ -93,12 +99,12 @@ int ekg_analyze(const int16_t *samples,
     /* Step 3: VT Detection */
 
     vt_detection_result_t vt_result;
-    detect_vt(filtered, signal, num_samples, &qrs_result, EKG_SAMPLE_RATE, &vt_result);
+    detect_vt(filtered, signal, num_samples, &qrs_result, EKG_SAMPLE_RATE, config, &vt_result);
 
     /* Step 4: VF Detection */
 
     vf_detection_result_t vf_result;
-    detect_vf(signal, num_samples, &qrs_result, EKG_SAMPLE_RATE, &vf_result);
+    detect_vf(signal, num_samples, &qrs_result, EKG_SAMPLE_RATE, config, &vf_result);
 
     /* Step 5: Decision Logic */
 
@@ -107,7 +113,7 @@ int ekg_analyze(const int16_t *samples,
      * Default to no shock when uncertain
      */
 
-    if (vf_result.vf_detected == 1 && vf_result.confidence >= VF_CONFIDENCE_THRESHOLD) {
+    if (vf_result.vf_detected == 1 && vf_result.confidence >= config->vf_confidence_threshold) {
         /* VF detected */
         result->shock_advised = 1;
         result->rhythm_type = 3;  /* VF */
@@ -116,7 +122,7 @@ int ekg_analyze(const int16_t *samples,
         result->heart_rate = 0;  /* Cannot measure in VF */
         result->num_qrs_detected = qrs_result.count;
 
-    } else if (vt_result.vt_detected == 1 && vt_result.confidence >= VT_CONFIDENCE_THRESHOLD) {
+    } else if (vt_result.vt_detected == 1 && vt_result.confidence >= config->vt_confidence_threshold) {
         /* VT detected */
         result->shock_advised = 1;
         result->rhythm_type = 2;  /* VT */

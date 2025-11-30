@@ -191,7 +191,7 @@ int main(void)
 
     /* Test 1: Normal Sinus Rhythm (70 bpm) */
     generate_normal_sinus(signal, TEST_SAMPLES, 70.0f);
-    int ret = ekg_analyze(signal, TEST_SAMPLES, &result);
+    int ret = ekg_analyze(signal, TEST_SAMPLES, &result, NULL);
     print_result("Test 1: Normal Sinus Rhythm (70 bpm)", &result);
 
     if (ret == EKG_SUCCESS && result.shock_advised == 0 &&
@@ -205,7 +205,7 @@ int main(void)
 
     /* Test 2: Normal Sinus Rhythm (90 bpm) */
     generate_normal_sinus(signal, TEST_SAMPLES, 90.0f);
-    ret = ekg_analyze(signal, TEST_SAMPLES, &result);
+    ret = ekg_analyze(signal, TEST_SAMPLES, &result, NULL);
     print_result("Test 2: Normal Sinus Rhythm (90 bpm)", &result);
 
     if (ret == EKG_SUCCESS && result.shock_advised == 0 &&
@@ -219,7 +219,7 @@ int main(void)
 
     /* Test 3: Ventricular Tachycardia */
     generate_vt(signal, TEST_SAMPLES);
-    ret = ekg_analyze(signal, TEST_SAMPLES, &result);
+    ret = ekg_analyze(signal, TEST_SAMPLES, &result, NULL);
     print_result("Test 3: Ventricular Tachycardia", &result);
 
     if (ret == EKG_SUCCESS && result.shock_advised == 1 &&
@@ -239,7 +239,7 @@ int main(void)
     /* Note: Creating synthetic VF that avoids all QRS detection is difficult.
      * Real VF would have no organized QRS. We accept shock advised as pass. */
     generate_vf(signal, TEST_SAMPLES);
-    ret = ekg_analyze(signal, TEST_SAMPLES, &result);
+    ret = ekg_analyze(signal, TEST_SAMPLES, &result, NULL);
     print_result("Test 4: Ventricular Fibrillation (Synthetic)", &result);
 
     /* Accept either VF or VT detection, as long as shock is advised */
@@ -257,7 +257,7 @@ int main(void)
 
     /* Test 5: Asystole (should NOT shock) */
     generate_asystole(signal, TEST_SAMPLES);
-    ret = ekg_analyze(signal, TEST_SAMPLES, &result);
+    ret = ekg_analyze(signal, TEST_SAMPLES, &result, NULL);
     print_result("Test 5: Asystole (flat line)", &result);
 
     if (ret == EKG_SUCCESS && result.shock_advised == 0) {
@@ -272,7 +272,7 @@ int main(void)
     printf("\n=== Test 6: Boundary Conditions ===\n");
 
     /* Test NULL pointer */
-    ret = ekg_analyze(NULL, TEST_SAMPLES, &result);
+    ret = ekg_analyze(NULL, TEST_SAMPLES, &result, NULL);
     if (ret == EKG_ERROR_NULL_PTR) {
         printf("✓ NULL pointer check PASSED\n");
         passed++;
@@ -282,7 +282,7 @@ int main(void)
     }
 
     /* Test invalid length - too short (below 300 samples minimum) */
-    ret = ekg_analyze(signal, 200, &result);
+    ret = ekg_analyze(signal, 200, &result, NULL);
     if (ret == EKG_ERROR_INVALID_LEN) {
         printf("✓ Invalid length check (too short) PASSED\n");
         passed++;
@@ -292,7 +292,7 @@ int main(void)
     }
 
     /* Test invalid length - too long (above 800 samples maximum) */
-    ret = ekg_analyze(signal, 900, &result);
+    ret = ekg_analyze(signal, 900, &result, NULL);
     if (ret == EKG_ERROR_INVALID_LEN) {
         printf("✓ Invalid length check (too long) PASSED\n");
         passed++;
