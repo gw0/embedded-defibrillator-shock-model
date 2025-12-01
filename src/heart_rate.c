@@ -6,7 +6,14 @@
 
 #include "heart_rate.h"
 #include <stddef.h>
+#include <stdlib.h>
 #include <math.h>
+
+/* Helper: comparison for qsort */
+static int compare_uint16(const void *a, const void *b)
+{
+    return (int)(*(uint16_t*)a) - (int)(*(uint16_t*)b);
+}
 
 float calculate_heart_rate(const uint16_t *rr_intervals, uint8_t num_intervals,
                           uint16_t sample_rate)
@@ -16,29 +23,47 @@ float calculate_heart_rate(const uint16_t *rr_intervals, uint8_t num_intervals,
     }
 
     /*
-     * Calculate heart rate from R-R intervals:
-     * 1. Calculate mean R-R interval (in samples)
-     * 2. Convert to time (seconds)
-     * 3. Convert to heart rate (bpm)
+     * Calculate heart rate from R-R intervals with outlier filtering:
+     * 1. Sort R-R intervals and find median
+     * 2. Filter outliers (beyond 30% of median)
+     * 3. Use median of filtered intervals for heart rate
+     * More robust to edge effects than simple mean
      */
 
-    /* Calculate mean R-R interval */
-    uint32_t sum = 0;
-    for (uint8_t i = 0; i < num_intervals; i++) {
-        sum += rr_intervals[i];
+    /* Copy and sort intervals */
+    uint16_t sorted[50];
+    uint8_t n = (num_intervals < 50) ? num_intervals : 50;
+    for (uint8_t i = 0; i < n; i++) {
+        sorted[i] = rr_intervals[i];
     }
-    float mean_rr = (float)sum / (float)num_intervals;
+    qsort(sorted, n, sizeof(uint16_t), compare_uint16);
 
-    /* Prevent division by zero */
-    if (mean_rr == 0.0f) {
+    /* Calculate median */
+    float median_rr = (n % 2 == 0) ?
+        (sorted[n/2 - 1] + sorted[n/2]) / 2.0f : sorted[n/2];
+
+    if (median_rr == 0.0f) {
         return 0.0f;
     }
 
-    /* Convert to time in seconds */
-    float mean_rr_sec = mean_rr / (float)sample_rate;
+    /* Filter outliers: keep within 30% of median */
+    float lower = median_rr * 0.7f;
+    float upper = median_rr * 1.3f;
+    uint16_t filtered[50];
+    uint8_t count = 0;
+    for (uint8_t i = 0; i < n; i++) {
+        if (sorted[i] >= lower && sorted[i] <= upper) {
+            filtered[count++] = sorted[i];
+        }
+    }
 
-    /* Convert to heart rate in bpm */
-    float heart_rate = 60.0f / mean_rr_sec;
+    /* Use median of filtered intervals */
+    float final_rr = (count > 0) ?
+        ((count % 2 == 0) ? (filtered[count/2 - 1] + filtered[count/2]) / 2.0f
+                          : filtered[count/2]) : median_rr;
+
+    /* Convert to bpm */
+    float heart_rate = 60.0f * (float)sample_rate / final_rr;
 
     return heart_rate;
 }
