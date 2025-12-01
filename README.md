@@ -1,6 +1,6 @@
-# EKG Signal Analyzer
+# EKG/ECG Signal Analyzer
 
-An educational/prototype EKG (electrocardiogram) signal analyzer for detecting ventricular arrhythmias and providing defibrillator shock recommendations.
+An educational/prototype EKG/ECG (electrocardiogram) signal analyzer for detecting ventricular arrhythmias and providing defibrillator shock recommendations.
 
 ## ⚠️ SAFETY NOTICE
 
@@ -35,7 +35,7 @@ The system recommends whether a defibrillator shock should be administered based
 - **Signal Type**: Single-lead EKG (Lead II equivalent)
 - **Data Type**: 16-bit signed integers (`int16_t`)
 - **Sample Rate**: 100 Hz
-- **Duration**: 2-10 seconds (200-1000 samples)
+- **Duration**: 3-10 seconds (300-1000 samples)
 - **Pre-filtering**: Baseline wander removed, noise filtered
 
 ## Output

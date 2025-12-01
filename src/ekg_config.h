@@ -17,7 +17,7 @@
 
 /* Input constraints - per specification section 4.3 */
 #define EKG_MIN_SAMPLES       300    /* 3 seconds minimum (spec requirement) */
-#define EKG_MAX_SAMPLES       800    /* 8 seconds maximum (spec requirement) */
+#define EKG_MAX_SAMPLES       1000   /* 10 seconds maximum (spec requirement) */
 #define EKG_ANALYSIS_WINDOW   500    /* 5 seconds recommended */
 
 /* QRS Detection (Pan-Tompkins) */

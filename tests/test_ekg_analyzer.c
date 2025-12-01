@@ -12,7 +12,7 @@
 #include "../src/ekg_analyzer.h"
 #include "../src/ekg_config.h"
 
-#define TEST_SAMPLES 500  /* 5 seconds - within spec range of 300-800 samples */
+#define TEST_SAMPLES 500  /* 5 seconds - within spec range of 300-1000 samples */
 
 /* Generate synthetic normal sinus rhythm */
 void generate_normal_sinus(int16_t *signal, uint16_t num_samples, float hr_bpm)
@@ -291,8 +291,8 @@ int main(void)
         failed++;
     }
 
-    /* Test invalid length - too long (above 800 samples maximum) */
-    ret = ekg_analyze(signal, 900, &result, NULL);
+    /* Test invalid length - too long (above 1000 samples maximum) */
+    ret = ekg_analyze(signal, 1100, &result, NULL);
     if (ret == EKG_ERROR_INVALID_LEN) {
         printf("✓ Invalid length check (too long) PASSED\n");
         passed++;

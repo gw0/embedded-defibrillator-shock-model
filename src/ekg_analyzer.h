@@ -35,7 +35,7 @@ typedef struct {
  * signal through all detection stages and returns a comprehensive result.
  *
  * @param samples     Pointer to array of EKG samples (int16_t)
- * @param num_samples Number of samples in array (200-1000)
+ * @param num_samples Number of samples in array (300-1000)
  * @param result      Pointer to structure to store analysis results
  * @param config      Optional config (NULL = use defaults from EKG_DEFAULT_CONFIG)
  * @return            0 on success, negative error code on failure
