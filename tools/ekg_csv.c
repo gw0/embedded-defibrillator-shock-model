@@ -39,7 +39,8 @@ typedef struct {
     int verbose;
     int window_size;
     int offset;
-    int step_size;    /* 0 = single window, >0 = rolling window */
+    int step_size;         /* 0 = single window, >0 = rolling window */
+    int source_sample_rate; /* Source sampling rate in Hz (default: 100) */
 } csv_options_t;
 
 /* Window result storage for rolling window analysis */
@@ -63,10 +64,10 @@ static void print_version(void);
 static int parse_arguments(int argc, char *argv[], csv_options_t *options);
 static const char *rhythm_type_to_string(uint8_t type);
 static const char *rhythm_type_to_short_string(uint8_t type);
-static int calculate_num_windows(uint32_t total_samples, int window_size,
+static int calculate_num_windows(uint32_t num_samples, int window_size,
                                  int offset, int step_size);
 static void print_results(const window_result_t *results, int num_windows,
-                                  uint32_t total_samples, const csv_options_t *options,
+                                  uint32_t num_samples, const csv_options_t *options,
                                   const int16_t *samples);
 static void calculate_signal_stats(const int16_t *samples, uint32_t count,
                                    signal_stats_t *stats);
@@ -76,9 +77,11 @@ static void print_error(const char *context);
 int main(int argc, char *argv[])
 {
     int exit_code = EXIT_SUCCESS;
+    int16_t *raw_samples = NULL;
+    uint32_t num_raw_samples = 0;
     int16_t *samples = NULL;
+    uint32_t num_samples = 0;
     csv_options_t options = {0};
-    uint32_t total_samples = 0;
 
     /* Parse command-line arguments */
     if (parse_arguments(argc, argv, &options) != 0) {
@@ -86,40 +89,77 @@ int main(int argc, char *argv[])
         goto cleanup;
     }
 
-    /* Allocate buffer for samples */
-    samples = (int16_t *)malloc(MAX_SAMPLES * sizeof(int16_t));
-    if (samples == NULL) {
+    /* Allocate buffers */
+    raw_samples = (int16_t *)malloc(MAX_SAMPLES * sizeof(int16_t));
+    if (raw_samples == NULL) {
         print_error("Failed to allocate sample buffer");
         exit_code = EXIT_MEMORY_ERROR;
         goto cleanup;
     }
 
     /* Load CSV file */
-    int load_result = load_csv_file(options.filename, samples, &total_samples, MAX_SAMPLES);
+    int load_result = load_csv_file(options.filename, raw_samples, &num_raw_samples, MAX_SAMPLES);
     if (load_result != 0) {
         fprintf(stderr, "Error: Failed to load CSV file\n");
         exit_code = EXIT_FILE_ERROR;
         goto cleanup;
     }
 
+    if (options.verbose) {
+        printf("Loaded %u samples from %s\n", num_raw_samples, options.filename);
+    }
+
+    /* Downsample if needed */
+    if (options.source_sample_rate != 100) {
+        samples = (int16_t *)malloc(MAX_SAMPLES * sizeof(int16_t));
+        if (samples == NULL) {
+            print_error("Failed to allocate downsample buffer");
+            exit_code = EXIT_MEMORY_ERROR;
+            goto cleanup;
+        }
+
+        int ds_result = downsample_to_100hz(raw_samples, num_raw_samples,
+                                            options.source_sample_rate,
+                                            samples, &num_samples);
+        if (ds_result != 0) {
+            fprintf(stderr, "Error: Downsampling failed\n");
+            free(samples);
+            samples = NULL;
+            exit_code = EXIT_DATA_ERROR;
+            goto cleanup;
+        }
+
+        if (options.verbose) {
+            printf("Downsampled: %u samples @ %dHz -> %u samples @ 100Hz\n",
+                   num_raw_samples, options.source_sample_rate, num_samples);
+        }
+
+        free(raw_samples);
+        raw_samples = NULL;
+    } else {
+        samples = raw_samples;
+        num_samples = num_raw_samples;
+        raw_samples = NULL;
+    }
+
     /* Validate sample count */
-    if (total_samples < EKG_MIN_SAMPLES) {
+    if (num_samples < EKG_MIN_SAMPLES) {
         fprintf(stderr, "Error: Too few samples (%u samples, minimum %d required)\n",
-                total_samples, EKG_MIN_SAMPLES);
+                num_samples, EKG_MIN_SAMPLES);
         exit_code = EXIT_DATA_ERROR;
         goto cleanup;
     }
 
     /* Validate offset */
-    if ((uint32_t)options.offset >= total_samples) {
+    if ((uint32_t)options.offset >= num_samples) {
         fprintf(stderr, "Error: Offset (%d) exceeds total samples (%u)\n",
-                options.offset, total_samples);
+                options.offset, num_samples);
         exit_code = EXIT_DATA_ERROR;
         goto cleanup;
     }
 
     /* Validate window size fits available samples */
-    uint32_t remaining = total_samples - options.offset;
+    uint32_t remaining = num_samples - options.offset;
     if (remaining < (uint32_t)options.window_size) {
         fprintf(stderr, "Error: Window size (%d) exceeds available samples (%u)\n",
                 options.window_size, remaining);
@@ -137,7 +177,7 @@ int main(int argc, char *argv[])
         step = 0;  /* Doesn't matter, loop runs once */
     } else {
         /* Rolling window mode */
-        num_windows = calculate_num_windows(total_samples, options.window_size,
+        num_windows = calculate_num_windows(num_samples, options.window_size,
                                            options.offset, options.step_size);
         step = options.step_size;
 
@@ -162,7 +202,7 @@ int main(int argc, char *argv[])
         uint32_t window_offset = options.offset + (i * step);
 
         /* Validate window doesn't exceed file bounds */
-        if (window_offset + options.window_size > total_samples) {
+        if (window_offset + options.window_size > num_samples) {
             break;  /* Stop if we've run out of samples */
         }
 
@@ -204,11 +244,14 @@ int main(int argc, char *argv[])
     }
 
     /* Print results - format adapts based on num_windows */
-    print_results(results, actual_windows, total_samples, &options, samples);
+    print_results(results, actual_windows, num_samples, &options, samples);
 
     free(results);
 
 cleanup:
+    if (raw_samples != NULL) {
+        free(raw_samples);
+    }
     if (samples != NULL) {
         free(samples);
     }
@@ -236,6 +279,9 @@ static void print_help(const char *program_name)
     printf("    -s, --step <N>      Step size for rolling window analysis (default: 0)\n");
     printf("                        When set, enables rolling window mode\n");
     printf("                        Common values: 250 (50%% overlap), 100 (high overlap)\n");
+    printf("    -r, --sample-rate <Hz>  Source sample rate (default: 100)\n");
+    printf("                        Supported: 100, 200, 500, 1000, 2000, 5000, 10000 Hz\n");
+    printf("                        Data will be downsampled to 100 Hz for analysis\n");
     printf("    -h, --help          Display this help message\n");
     printf("    --version           Display version information\n\n");
     printf("CSV FILE FORMAT:\n");
@@ -281,6 +327,7 @@ static int parse_arguments(int argc, char *argv[], csv_options_t *options)
     options->window_size = DEFAULT_WINDOW_SIZE;
     options->offset = 0;
     options->step_size = 0;  /* Default: single window mode */
+    options->source_sample_rate = 100;  /* Default: no downsampling */
     options->filename[0] = '\0';
 
     static struct option long_options[] = {
@@ -288,6 +335,7 @@ static int parse_arguments(int argc, char *argv[], csv_options_t *options)
         {"window", required_argument, 0, 'w'},
         {"offset", required_argument, 0, 'o'},
         {"step", required_argument, 0, 's'},
+        {"sample-rate", required_argument, 0, 'r'},
         {"help", no_argument, 0, 'h'},
         {"version", no_argument, 0, 'V'},
         {0, 0, 0, 0}
@@ -296,7 +344,7 @@ static int parse_arguments(int argc, char *argv[], csv_options_t *options)
     int opt;
     int option_index = 0;
 
-    while ((opt = getopt_long(argc, argv, "vw:o:s:h", long_options, &option_index)) != -1) {
+    while ((opt = getopt_long(argc, argv, "vw:o:s:r:h", long_options, &option_index)) != -1) {
         switch (opt) {
             case 'v':
                 options->verbose = 1;
@@ -321,6 +369,19 @@ static int parse_arguments(int argc, char *argv[], csv_options_t *options)
                 options->step_size = atoi(optarg);
                 if (options->step_size < 0) {
                     fprintf(stderr, "Error: Step size must be non-negative\n");
+                    return -1;
+                }
+                break;
+            case 'r':
+                options->source_sample_rate = atoi(optarg);
+                if (options->source_sample_rate != 100 &&
+                    options->source_sample_rate != 200 &&
+                    options->source_sample_rate != 500 &&
+                    options->source_sample_rate != 1000 &&
+                    options->source_sample_rate != 2000 &&
+                    options->source_sample_rate != 5000 &&
+                    options->source_sample_rate != 10000) {
+                    fprintf(stderr, "Error: Supported sample rates: 100, 200, 500, 1000, 2000, 5000, 10000 Hz\n");
                     return -1;
                 }
                 break;
@@ -376,14 +437,14 @@ static const char *rhythm_type_to_short_string(uint8_t type)
 }
 
 /* Calculate number of windows that fit in the data */
-static int calculate_num_windows(uint32_t total_samples, int window_size,
+static int calculate_num_windows(uint32_t num_samples, int window_size,
                                  int offset, int step_size)
 {
-    if ((uint32_t)offset >= total_samples) {
+    if ((uint32_t)offset >= num_samples) {
         return 0;
     }
 
-    uint32_t remaining = total_samples - offset;
+    uint32_t remaining = num_samples - offset;
     if (remaining < (uint32_t)window_size) {
         return 0;
     }
@@ -393,7 +454,7 @@ static int calculate_num_windows(uint32_t total_samples, int window_size,
 
 /* Print results with unified format for both single and multi-window modes */
 static void print_results(const window_result_t *results, int num_windows,
-                          uint32_t total_samples, const csv_options_t *options,
+                          uint32_t num_samples, const csv_options_t *options,
                           const int16_t *samples)
 {
     /* Phase 1: Summary Header & Table */
@@ -402,7 +463,7 @@ static void print_results(const window_result_t *results, int num_windows,
     printf("========================================\n");
     printf("File: %s\n", options->filename);
     printf("Total samples: %u (%.2f seconds @ 100 Hz)\n",
-           total_samples, total_samples / 100.0f);
+           num_samples, num_samples / 100.0f);
     printf("Window size: %d samples (%.2f seconds)\n",
            options->window_size, options->window_size / 100.0f);
     printf("Offset: %d\n", options->offset);
