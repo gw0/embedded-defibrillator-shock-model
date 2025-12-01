@@ -91,16 +91,38 @@ $(TEST_TARGET): $(TEST_SOURCES) $(HOST_OBJECTS) | $(BIN_DIR)
 $(INTEGRATION_TEST_TARGET): $(INTEGRATION_TEST_SOURCES) $(HOST_OBJECTS) | $(BIN_DIR)
 	$(HOST_CC) $(HOST_CFLAGS) $(INTEGRATION_TEST_SOURCES) $(HOST_OBJECTS) -o $@ -lm
 
-# CSV Analyzer Tool
+# Tools
 TOOLS_DIR = tools
+
+# CSV Utilities (shared)
+CSV_UTILS_SOURCE = $(TOOLS_DIR)/csv_utils.c
+CSV_UTILS_OBJECT = $(HOST_OBJ_DIR)/csv_utils.o
+
+$(CSV_UTILS_OBJECT): $(CSV_UTILS_SOURCE) | $(HOST_OBJ_DIR)
+	$(HOST_CC) $(HOST_CFLAGS) -c $< -o $@
+
+# CSV Analyzer Tool
 CSV_TOOL_SOURCE = $(TOOLS_DIR)/ekg_csv.c
 CSV_TOOL_TARGET = $(BIN_DIR)/ekg_csv
 
 .PHONY: ekg_csv
 ekg_csv: $(CSV_TOOL_TARGET)
 
-$(CSV_TOOL_TARGET): $(CSV_TOOL_SOURCE) $(HOST_OBJECTS) | $(BIN_DIR)
-	$(HOST_CC) $(HOST_CFLAGS) $(CSV_TOOL_SOURCE) $(HOST_OBJECTS) -o $@ -lm
+$(CSV_TOOL_TARGET): $(CSV_TOOL_SOURCE) $(HOST_OBJECTS) $(CSV_UTILS_OBJECT) | $(BIN_DIR)
+	$(HOST_CC) $(HOST_CFLAGS) $(CSV_TOOL_SOURCE) $(HOST_OBJECTS) $(CSV_UTILS_OBJECT) -o $@ -lm
+
+# Training Tool
+TRAIN_TOOL_SOURCE = $(TOOLS_DIR)/ekg_train.c
+TRAIN_TOOL_TARGET = $(BIN_DIR)/ekg_train
+
+# Check if OpenMP is available
+OPENMP_FLAGS := $(shell echo | $(HOST_CC) -fopenmp -E - >/dev/null 2>&1 && echo "-fopenmp" || echo "")
+
+.PHONY: ekg_train
+ekg_train: $(TRAIN_TOOL_TARGET)
+
+$(TRAIN_TOOL_TARGET): $(TRAIN_TOOL_SOURCE) $(HOST_OBJECTS) $(CSV_UTILS_OBJECT) | $(BIN_DIR)
+	$(HOST_CC) $(HOST_CFLAGS) $(OPENMP_FLAGS) $(TRAIN_TOOL_SOURCE) $(HOST_OBJECTS) $(CSV_UTILS_OBJECT) -o $@ -lm
 
 # Show help
 .PHONY: help
@@ -113,11 +135,13 @@ help:
 	@echo "  arm           - Build for ARM Cortex-M33"
 	@echo "  test          - Build and run verification tests"
 	@echo "  ekg_csv       - Build CSV analyzer tool"
+	@echo "  ekg_train     - Build training/evaluation tool"
 	@echo "  clean         - Remove build artifacts"
 	@echo "  help          - Show this help message"
 	@echo ""
 	@echo "Output:"
-	@echo "  Host:     $(HOST_TARGET) (static library)"
-	@echo "  ARM:      $(ARM_TARGET) (static library)"
-	@echo "  Test:     $(TEST_TARGET), $(INTEGRATION_TEST_TARGET)"
-	@echo "  CSV Tool: $(CSV_TOOL_TARGET)"
+	@echo "  Host:       $(HOST_TARGET) (static library)"
+	@echo "  ARM:        $(ARM_TARGET) (static library)"
+	@echo "  Test:       $(TEST_TARGET), $(INTEGRATION_TEST_TARGET)"
+	@echo "  CSV Tool:   $(CSV_TOOL_TARGET)"
+	@echo "  Train Tool: $(TRAIN_TOOL_TARGET)"
