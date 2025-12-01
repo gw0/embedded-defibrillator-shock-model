@@ -34,20 +34,20 @@
 #define QRS_MAX_DETECTIONS    50     /* Maximum QRS complexes to detect */
 
 /* VT Detection */
-#define VT_HR_THRESHOLD       120.0f  /* bpm */
-#define VT_QRS_WIDTH_MS       120.0f  /* ms */
-#define VT_QRS_WIDTH_SAMPLES  (VT_QRS_WIDTH_MS * EKG_SAMPLE_RATE / 1000.0f)  /* 12 */
-#define VT_REGULARITY_CV      20.0f   /* percent (CV < 20% is regular) */
+#define VT_HR_THRESHOLD       140.0f  /* bpm */
+#define VT_QRS_WIDTH_MS       110.0f  /* ms */
+#define VT_QRS_WIDTH_SAMPLES  (VT_QRS_WIDTH_MS * EKG_SAMPLE_RATE / 1000.0f)  /* 11 */
+#define VT_REGULARITY_CV      15.0f   /* percent (CV < 15% is regular) */
 #define VT_MIN_CONSECUTIVE    3       /* Minimum consecutive wide QRS */
-#define VT_CONFIDENCE_THRESHOLD 0.7f  /* Confidence threshold for VT */
+#define VT_CONFIDENCE_THRESHOLD 0.80f  /* Confidence threshold for VT */
 
 /* VF Detection */
-#define VF_FREQ_MIN           4.0f    /* Hz */
-#define VF_FREQ_MAX           10.0f   /* Hz */
-#define VF_ZCR_THRESHOLD      0.17f   /* Zero-crossing rate threshold */
+#define VF_FREQ_MIN           5.0f    /* Hz */
+#define VF_FREQ_MAX           9.0f    /* Hz */
+#define VF_ZCR_THRESHOLD      0.10f   /* Zero-crossing rate threshold */
 #define VF_MIN_AMPLITUDE      100.0f  /* Minimum amplitude (not asystole) */
 #define VF_QRS_RATE_THRESHOLD 0.5f    /* QRS per second (below = absent) */
-#define VF_CONFIDENCE_THRESHOLD 0.7f  /* Confidence threshold for VF */
+#define VF_CONFIDENCE_THRESHOLD 0.90f  /* Confidence threshold for VF */
 
 /* Goertzel frequencies for VF detection */
 #define VF_NUM_TEST_FREQS     7
