@@ -101,6 +101,13 @@ CSV_UTILS_OBJECT = $(HOST_OBJ_DIR)/csv_utils.o
 $(CSV_UTILS_OBJECT): $(CSV_UTILS_SOURCE) | $(HOST_OBJ_DIR)
 	$(HOST_CC) $(HOST_CFLAGS) -c $< -o $@
 
+# Evaluation Utilities (shared)
+EVAL_UTILS_SOURCE = $(TOOLS_DIR)/eval_utils.c
+EVAL_UTILS_OBJECT = $(HOST_OBJ_DIR)/eval_utils.o
+
+$(EVAL_UTILS_OBJECT): $(EVAL_UTILS_SOURCE) | $(HOST_OBJ_DIR)
+	$(HOST_CC) $(HOST_CFLAGS) -c $< -o $@
+
 # CSV Analyzer Tool
 CSV_TOOL_SOURCE = $(TOOLS_DIR)/ekg_csv.c
 CSV_TOOL_TARGET = $(BIN_DIR)/ekg_csv
@@ -121,8 +128,18 @@ OPENMP_FLAGS := $(shell echo | $(HOST_CC) -fopenmp -E - >/dev/null 2>&1 && echo 
 .PHONY: ekg_train
 ekg_train: $(TRAIN_TOOL_TARGET)
 
-$(TRAIN_TOOL_TARGET): $(TRAIN_TOOL_SOURCE) $(HOST_OBJECTS) $(CSV_UTILS_OBJECT) | $(BIN_DIR)
-	$(HOST_CC) $(HOST_CFLAGS) $(OPENMP_FLAGS) $(TRAIN_TOOL_SOURCE) $(HOST_OBJECTS) $(CSV_UTILS_OBJECT) -o $@ -lm
+$(TRAIN_TOOL_TARGET): $(TRAIN_TOOL_SOURCE) $(HOST_OBJECTS) $(CSV_UTILS_OBJECT) $(EVAL_UTILS_OBJECT) | $(BIN_DIR)
+	$(HOST_CC) $(HOST_CFLAGS) $(OPENMP_FLAGS) $(TRAIN_TOOL_SOURCE) $(HOST_OBJECTS) $(CSV_UTILS_OBJECT) $(EVAL_UTILS_OBJECT) -o $@ -lm
+
+# Evaluation Tool
+EVAL_TOOL_SOURCE = $(TOOLS_DIR)/ekg_eval.c
+EVAL_TOOL_TARGET = $(BIN_DIR)/ekg_eval
+
+.PHONY: ekg_eval
+ekg_eval: $(EVAL_TOOL_TARGET)
+
+$(EVAL_TOOL_TARGET): $(EVAL_TOOL_SOURCE) $(HOST_OBJECTS) $(CSV_UTILS_OBJECT) $(EVAL_UTILS_OBJECT) | $(BIN_DIR)
+	$(HOST_CC) $(HOST_CFLAGS) $(EVAL_TOOL_SOURCE) $(HOST_OBJECTS) $(CSV_UTILS_OBJECT) $(EVAL_UTILS_OBJECT) -o $@ -lm
 
 # Show help
 .PHONY: help
@@ -136,6 +153,7 @@ help:
 	@echo "  test          - Build and run verification tests"
 	@echo "  ekg_csv       - Build CSV analyzer tool"
 	@echo "  ekg_train     - Build training/evaluation tool"
+	@echo "  ekg_eval      - Build evaluation tool"
 	@echo "  clean         - Remove build artifacts"
 	@echo "  help          - Show this help message"
 	@echo ""
@@ -145,3 +163,4 @@ help:
 	@echo "  Test:       $(TEST_TARGET), $(INTEGRATION_TEST_TARGET)"
 	@echo "  CSV Tool:   $(CSV_TOOL_TARGET)"
 	@echo "  Train Tool: $(TRAIN_TOOL_TARGET)"
+	@echo "  Eval Tool:  $(EVAL_TOOL_TARGET)"
