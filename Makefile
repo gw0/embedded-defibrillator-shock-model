@@ -152,7 +152,7 @@ help:
 	@echo "  arm           - Build for ARM Cortex-M33"
 	@echo "  test          - Build and run verification tests"
 	@echo "  ekg_csv       - Build CSV analyzer tool"
-	@echo "  ekg_train     - Build training/evaluation tool"
+	@echo "  ekg_train     - Build training/optimization tool"
 	@echo "  ekg_eval      - Build evaluation tool"
 	@echo "  clean         - Remove build artifacts"
 	@echo "  help          - Show this help message"

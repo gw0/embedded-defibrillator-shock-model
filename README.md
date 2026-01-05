@@ -1,6 +1,6 @@
-# EKG/ECG Signal Analyzer
+# ECG/EKG Defibrillator Shock Algorithm
 
-An educational/prototype EKG/ECG (electrocardiogram) signal analyzer for detecting ventricular arrhythmias and providing defibrillator shock recommendations.
+An ECG/EKG (electrocardiogram) signal analyzer for detecting ventricular arrhythmias and providing defibrillator shock recommendations.
 
 ## ⚠️ SAFETY NOTICE
 
@@ -49,28 +49,33 @@ The analyzer provides:
 
 ## Building
 
-### For Host System (Development/Testing)
+### For Host System
 ```bash
-make host
-# or simply
-make
+make          # Default: host build
+make host     # Explicit host build
+make test     # Build and run all tests
+make ekg_csv  # Build CSV analyzer tool
+make ekg_train # Build training/optimization tool
+make ekg_eval # Build evaluation tool
+make clean    # Clean build artifacts
+make help     # Show all available targets
 ```
 
 ### For ARM Cortex-M33
 ```bash
-make arm
+make arm      # Cross-compile for ARM
 ```
 
-### Clean Build Artifacts
+## Testing
 ```bash
-make clean
+make test     # Build and run all tests
 ```
 
 ## Requirements
 
 ### Host Build
 - GCC compiler with C99 support
-- Standard math library
+- Standard math library (-lm)
 
 ### ARM Build
 - ARM GCC cross-compiler (`arm-none-eabi-gcc`)
@@ -80,19 +85,28 @@ make clean
 
 ```
 .
-├── docs/
-│   ├── specs.md          # Requirements specification
-│   └── plan.md           # Implementation plan
-├── src/
-│   ├── ekg_analyzer.c/h  # Main analysis function
-│   ├── ekg_config.h      # Configuration constants
-│   ├── signal_processing.c/h  # Preprocessing & filtering
-│   ├── qrs_detector.c/h  # QRS detection (Pan-Tompkins)
-│   ├── heart_rate.c/h    # Heart rate analysis
-│   ├── vt_detector.c/h   # Ventricular Tachycardia detection
-│   └── vf_detector.c/h   # Ventricular Fibrillation detection
-├── Makefile              # Build configuration
-└── README.md             # This file
+├── src/                    # Core algorithm implementation
+│   ├── ekg_analyzer.c/h    # Main analysis API
+│   ├── ekg_config.h        # Configuration constants
+│   ├── signal_processing.c/h  # Filters and preprocessing
+│   ├── qrs_detector.c/h    # Pan-Tompkins QRS detection
+│   ├── heart_rate.c/h      # Heart rate analysis
+│   ├── vt_detector.c/h     # Ventricular Tachycardia detection
+│   └── vf_detector.c/h     # Ventricular Fibrillation detection
+├── tests/                  # Test suite
+│   ├── test_signal_processing.c  # Unit tests
+│   └── test_ekg_analyzer.c       # Integration tests
+├── tools/                  # Development utilities
+│   ├── ekg_csv.c           # CSV signal analyzer
+│   ├── ekg_train.c         # Training/optimization tool
+│   └── ekg_eval.c          # Evaluation tool
+├── docs/                   # Documentation
+│   ├── architecture.md     # Signal processing pipeline
+│   ├── development.md      # Development guidelines
+│   ├── tools.md            # Tool usage details
+│   └── testing.md          # Test suite details
+├── Makefile                # Build configuration
+└── README.md               # This file
 ```
 
 ## Usage Example
@@ -108,7 +122,7 @@ int main(void) {
 
     // Analyze
     ekg_analysis_result_t result;
-    int ret = ekg_analyze(ekg_samples, 500, &result);
+    int ret = ekg_analyze(ekg_samples, 500, &result, NULL);
 
     if (ret == EKG_SUCCESS) {
         if (result.shock_advised) {
@@ -124,22 +138,23 @@ int main(void) {
 }
 ```
 
-## Implementation Status
+## Development Tools
 
-**Phase 1: Complete** ✓
-- Project structure created
-- All header files with interfaces defined
-- Stub implementations created
-- Build system configured
+### CSV Analyzer
+Analyze individual EKG signal files:
+```bash
+make ekg_csv
+./bin/ekg_csv data/path/to/signal.csv
+```
 
-**Remaining Phases:**
-- Phase 2: Signal Preprocessing
-- Phase 3: QRS Detection (Pan-Tompkins)
-- Phase 4: Heart Rate Analysis
-- Phase 5: VT Detection
-- Phase 6: VF Detection
-- Phase 7: Integration
-- Phase 8: Optimization & Documentation
+### Training Tool
+Optimize algorithm parameters using grid search:
+```bash
+make ekg_train
+./bin/ekg_train data/SHOCK/*.csv data/NOSHOCK/*.csv
+```
+
+See `docs/tools.md` for detailed usage information.
 
 ## Algorithm References
 
@@ -149,8 +164,5 @@ int main(void) {
 
 ## License
 
-Educational/Prototype Use Only - See SAFETY NOTICE above
+Copyright &copy; 2025-2026 *gw0* [<http://gw.tnode.com/>] &lt;<gw.2026@ena.one>&gt;
 
-## Contact
-
-For questions about this educational implementation, please refer to the documentation in the `docs/` directory.
