@@ -20,6 +20,16 @@
 void remove_dc_offset(const int16_t *input, float *output, uint16_t num_samples);
 
 /**
+ * Normalize signal to target standard deviation
+ * Makes algorithm robust to different input amplitudes and ADC ranges
+ *
+ * @param signal      Input/output signal (float array, modified in-place)
+ * @param num_samples Number of samples
+ * @param target_std  Target standard deviation (e.g., 500.0f)
+ */
+void normalize_signal(float *signal, uint16_t num_samples, float target_std);
+
+/**
  * Apply bandpass filter (5-18 Hz) to emphasize QRS complexes
  * Uses cascaded 2nd-order IIR Butterworth filters
  *

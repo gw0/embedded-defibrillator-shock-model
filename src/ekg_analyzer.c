@@ -71,6 +71,9 @@ int ekg_analyze(const int16_t *samples,
     /* Remove DC offset */
     remove_dc_offset(samples, signal, num_samples);
 
+    /* Normalize signal to standard amplitude range */
+    normalize_signal(signal, num_samples, EKG_NORMALIZE_TARGET_STD);
+
     /* Apply bandpass filter (5-18 Hz) */
     float filter_state[8] = {0};
     bandpass_filter(signal, filtered, num_samples, filter_state);

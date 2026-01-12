@@ -72,6 +72,9 @@ static const float VF_TEST_FREQS[VF_NUM_TEST_FREQS] =
 /* Filter state size */
 #define FILTER_STATE_SIZE 8
 
+/* Signal normalization */
+#define EKG_NORMALIZE_TARGET_STD  500.0f  /* Target std dev (tuned for existing test data) */
+
 /* Error codes */
 #define EKG_SUCCESS           0
 #define EKG_ERROR_NULL_PTR   -1

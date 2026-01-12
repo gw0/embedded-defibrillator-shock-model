@@ -148,6 +148,79 @@ void test_moving_average(void)
     printf("Test %s (smoothing applied)\n", (noise_rms > 10.0f) ? "PASSED" : "WARNING");
 }
 
+/* Calculate standard deviation */
+float calculate_std_dev(const float *signal, uint16_t num_samples)
+{
+    float mean = calculate_mean(signal, num_samples);
+    float variance_sum = 0.0f;
+    for (uint16_t i = 0; i < num_samples; i++) {
+        float diff = signal[i] - mean;
+        variance_sum += diff * diff;
+    }
+    return sqrtf(variance_sum / (float)num_samples);
+}
+
+/* Test 4: Signal Normalization */
+void test_normalization(void)
+{
+    printf("\n=== Test 4: Signal Normalization ===\n");
+
+    float signal[TEST_SAMPLES];
+
+    /* Subtest 1: Normalize signal with known std_dev */
+    printf("\nSubtest 1: Normalization correctness\n");
+    generate_sine(signal, TEST_SAMPLES, 10.0f, 1000.0f, 0.0f);
+    float std_before = calculate_std_dev(signal, TEST_SAMPLES);
+    normalize_signal(signal, TEST_SAMPLES, 500.0f);
+    float std_after = calculate_std_dev(signal, TEST_SAMPLES);
+    float mean_after = calculate_mean(signal, TEST_SAMPLES);
+
+    printf("  Std dev before: %.2f\n", std_before);
+    printf("  Std dev after:  %.2f (target: 500.0)\n", std_after);
+    printf("  Mean after:     %.6f (should be ~0)\n", mean_after);
+    printf("  Test %s\n", (fabsf(std_after - 500.0f) < 10.0f && fabsf(mean_after) < 1.0f) ? "PASSED" : "FAILED");
+
+    /* Subtest 2: Zero-mean preservation */
+    printf("\nSubtest 2: Zero-mean preservation\n");
+    generate_sine(signal, TEST_SAMPLES, 8.0f, 447.0f, 0.0f);
+    float mean_before = calculate_mean(signal, TEST_SAMPLES);
+    normalize_signal(signal, TEST_SAMPLES, 500.0f);
+    mean_after = calculate_mean(signal, TEST_SAMPLES);
+
+    printf("  Mean before: %.6f\n", mean_before);
+    printf("  Mean after:  %.6f (should remain ~0)\n", mean_after);
+    printf("  Test %s\n", (fabsf(mean_after) < 1.0f) ? "PASSED" : "FAILED");
+
+    /* Subtest 3: Edge case - flat signal */
+    printf("\nSubtest 3: Flat signal handling\n");
+    for (uint16_t i = 0; i < TEST_SAMPLES; i++) {
+        signal[i] = 0.0f;
+    }
+    normalize_signal(signal, TEST_SAMPLES, 500.0f);
+    int all_zero = 1;
+    for (uint16_t i = 0; i < TEST_SAMPLES; i++) {
+        if (signal[i] != 0.0f) {
+            all_zero = 0;
+            break;
+        }
+    }
+    printf("  Signal remained unchanged: %s\n", all_zero ? "YES" : "NO");
+    printf("  Test %s\n", all_zero ? "PASSED" : "FAILED");
+
+    /* Subtest 4: Compatibility with old data (std ≈ 447) */
+    printf("\nSubtest 4: Old data compatibility\n");
+    generate_sine(signal, TEST_SAMPLES, 10.0f, 447.0f, 0.0f);
+    std_before = calculate_std_dev(signal, TEST_SAMPLES);
+    normalize_signal(signal, TEST_SAMPLES, 500.0f);
+    std_after = calculate_std_dev(signal, TEST_SAMPLES);
+    float scale_factor = std_after / std_before;
+
+    printf("  Std dev before: %.2f\n", std_before);
+    printf("  Std dev after:  %.2f\n", std_after);
+    printf("  Scale factor:   %.3f (expected: ~1.12)\n", scale_factor);
+    printf("  Test %s (minimal scaling applied)\n", (scale_factor > 1.0f && scale_factor < 1.2f) ? "PASSED" : "FAILED");
+}
+
 int main(void)
 {
     printf("Signal Processing Module - Verification Tests\n");
@@ -157,6 +230,7 @@ int main(void)
     test_dc_offset_removal();
     test_bandpass_filter();
     test_moving_average();
+    test_normalization();
 
     printf("\n=== All tests complete ===\n");
 

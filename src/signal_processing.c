@@ -8,6 +8,7 @@
 #include "ekg_config.h"
 #include <stddef.h>
 #include <stdint.h>
+#include <math.h>
 
 void remove_dc_offset(const int16_t *input, float *output, uint16_t num_samples)
 {
@@ -25,6 +26,39 @@ void remove_dc_offset(const int16_t *input, float *output, uint16_t num_samples)
     /* Subtract mean from each sample and convert to float */
     for (uint16_t i = 0; i < num_samples; i++) {
         output[i] = (float)input[i] - mean;
+    }
+}
+
+void normalize_signal(float *signal, uint16_t num_samples, float target_std)
+{
+    if (signal == NULL || num_samples == 0 || target_std <= 0.0f) {
+        return;
+    }
+
+    /* Calculate mean (should be ~0 after DC removal) */
+    float sum = 0.0f;
+    for (uint16_t i = 0; i < num_samples; i++) {
+        sum += signal[i];
+    }
+    float mean = sum / (float)num_samples;
+
+    /* Calculate standard deviation */
+    float variance_sum = 0.0f;
+    for (uint16_t i = 0; i < num_samples; i++) {
+        float diff = signal[i] - mean;
+        variance_sum += diff * diff;
+    }
+    float std_dev = sqrtf(variance_sum / (float)num_samples);
+
+    /* Handle edge case: flat signal or very low amplitude */
+    if (std_dev < 1.0f) {
+        return; /* Signal is flat, no normalization needed */
+    }
+
+    /* Calculate scale factor and apply normalization */
+    float scale_factor = target_std / std_dev;
+    for (uint16_t i = 0; i < num_samples; i++) {
+        signal[i] = signal[i] * scale_factor;
     }
 }
 
