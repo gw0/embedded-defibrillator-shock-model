@@ -5,6 +5,8 @@
  * Useful for cross-dataset validation and testing.
  *
  * For educational and prototype purposes only - NOT for medical use.
+ *
+ * Copyright &copy; 2025-2026 *gw0* [<http://gw.tnode.com/>] &lt;<gw.2026@ena.one>&gt;
  */
 
 #include <stdio.h>

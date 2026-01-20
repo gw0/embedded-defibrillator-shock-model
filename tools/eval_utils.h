@@ -5,6 +5,8 @@
  * ekg_train and ekg_eval tools.
  *
  * For educational and prototype purposes only - NOT for medical use.
+ *
+ * Copyright &copy; 2025-2026 *gw0* [<http://gw.tnode.com/>] &lt;<gw.2026@ena.one>&gt;
  */
 
 #ifndef EVAL_UTILS_H

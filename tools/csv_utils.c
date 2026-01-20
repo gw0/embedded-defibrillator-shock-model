@@ -2,6 +2,8 @@
  * CSV Utilities - Implementation
  *
  * Extracted from ekg_csv.c for code reuse.
+ *
+ * Copyright &copy; 2025-2026 *gw0* [<http://gw.tnode.com/>] &lt;<gw.2026@ena.one>&gt;
  */
 
 #include "csv_utils.h"

@@ -3,6 +3,8 @@
  *
  * Functions for preprocessing EKG signals including DC offset removal,
  * bandpass filtering, and moving average.
+ *
+ * Copyright &copy; 2025-2026 *gw0* [<http://gw.tnode.com/>] &lt;<gw.2026@ena.one>&gt;
  */
 
 #ifndef SIGNAL_PROCESSING_H

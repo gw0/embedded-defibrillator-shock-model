@@ -5,6 +5,8 @@
  *
  * SAFETY NOTICE: This is an educational/prototype implementation.
  * NOT for medical use. NOT certified for patient care.
+ *
+ * Copyright &copy; 2025-2026 *gw0* [<http://gw.tnode.com/>] &lt;<gw.2026@ena.one>&gt;
  */
 
 #ifndef EKG_ANALYZER_H

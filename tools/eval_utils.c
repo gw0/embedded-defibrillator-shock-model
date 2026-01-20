@@ -4,6 +4,8 @@
  * Shared dataset loading, evaluation, and reporting functions.
  *
  * For educational and prototype purposes only - NOT for medical use.
+ *
+ * Copyright &copy; 2025-2026 *gw0* [<http://gw.tnode.com/>] &lt;<gw.2026@ena.one>&gt;
  */
 
 #include <stdio.h>
@@ -18,7 +20,7 @@
 #include "../src/ekg_analyzer.h"
 
 /* Internal constants */
-#define MAX_FILES 500
+#define MAX_FILES 15000
 #define MAX_SAMPLES 100000
 
 /* ========================================
@@ -107,7 +109,8 @@ int load_dataset(const char *base_path, dataset_t *dataset)
     /* Allocate file array */
     dataset->files = malloc(MAX_FILES * sizeof(dataset_file_t));
     if (dataset->files == NULL) {
-        fprintf(stderr, "Error: Failed to allocate dataset memory\n");
+        fprintf(stderr, "Error: Failed to allocate dataset memory (%zu bytes)\n",
+                MAX_FILES * sizeof(dataset_file_t));
         return -1;
     }
 

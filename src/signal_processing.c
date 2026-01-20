@@ -2,6 +2,8 @@
  * EKG Signal Analyzer - Signal Processing Module
  *
  * Implementation of signal preprocessing functions.
+ *
+ * Copyright &copy; 2025-2026 *gw0* [<http://gw.tnode.com/>] &lt;<gw.2026@ena.one>&gt;
  */
 
 #include "signal_processing.h"

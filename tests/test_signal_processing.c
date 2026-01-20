@@ -5,6 +5,8 @@
  * 1. DC offset removal
  * 2. Bandpass filter with sine waves at different frequencies
  * 3. Moving average filter
+ *
+ * Copyright &copy; 2025-2026 *gw0* [<http://gw.tnode.com/>] &lt;<gw.2026@ena.one>&gt;
  */
 
 #include <stdio.h>

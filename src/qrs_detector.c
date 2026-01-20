@@ -2,6 +2,8 @@
  * EKG Signal Analyzer - QRS Detection Module
  *
  * Implementation of Pan-Tompkins QRS detection algorithm.
+ *
+ * Copyright &copy; 2025-2026 *gw0* [<http://gw.tnode.com/>] &lt;<gw.2026@ena.one>&gt;
  */
 
 #include "qrs_detector.h"

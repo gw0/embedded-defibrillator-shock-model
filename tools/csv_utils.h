@@ -2,6 +2,8 @@
  * CSV Utilities - Shared CSV file loading functions
  *
  * Provides common CSV parsing functionality for EKG tools.
+ *
+ * Copyright &copy; 2025-2026 *gw0* [<http://gw.tnode.com/>] &lt;<gw.2026@ena.one>&gt;
  */
 
 #ifndef CSV_UTILS_H

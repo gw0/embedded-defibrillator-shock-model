@@ -2,6 +2,8 @@
  * EKG Signal Analyzer - Heart Rate Analysis Module
  *
  * Functions for calculating heart rate and R-R interval regularity.
+ *
+ * Copyright &copy; 2025-2026 *gw0* [<http://gw.tnode.com/>] &lt;<gw.2026@ena.one>&gt;
  */
 
 #ifndef HEART_RATE_H

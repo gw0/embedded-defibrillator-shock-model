@@ -2,6 +2,8 @@
  * EKG Signal Analyzer - Main Analysis Module
  *
  * Implementation of the main analysis function that integrates all modules.
+ *
+ * Copyright &copy; 2025-2026 *gw0* [<http://gw.tnode.com/>] &lt;<gw.2026@ena.one>&gt;
  */
 
 #include "ekg_analyzer.h"

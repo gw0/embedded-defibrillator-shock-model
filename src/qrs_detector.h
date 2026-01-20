@@ -2,6 +2,8 @@
  * EKG Signal Analyzer - QRS Detection Module
  *
  * Pan-Tompkins algorithm for detecting QRS complexes (ventricular depolarizations).
+ *
+ * Copyright &copy; 2025-2026 *gw0* [<http://gw.tnode.com/>] &lt;<gw.2026@ena.one>&gt;
  */
 
 #ifndef QRS_DETECTOR_H

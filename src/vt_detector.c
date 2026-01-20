@@ -2,6 +2,8 @@
  * EKG Signal Analyzer - VT Detection Module
  *
  * Implementation of Ventricular Tachycardia detection.
+ *
+ * Copyright &copy; 2025-2026 *gw0* [<http://gw.tnode.com/>] &lt;<gw.2026@ena.one>&gt;
  */
 
 #include "vt_detector.h"

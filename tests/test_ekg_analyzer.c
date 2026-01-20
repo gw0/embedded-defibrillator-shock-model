@@ -2,6 +2,8 @@
  * EKG Signal Analyzer - Integration Test
  *
  * Tests complete analysis pipeline with synthetic signals.
+ *
+ * Copyright &copy; 2025-2026 *gw0* [<http://gw.tnode.com/>] &lt;<gw.2026@ena.one>&gt;
  */
 
 #include <stdio.h>

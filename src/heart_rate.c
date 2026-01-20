@@ -2,6 +2,8 @@
  * EKG Signal Analyzer - Heart Rate Analysis Module
  *
  * Implementation of heart rate and R-R interval analysis functions.
+ *
+ * Copyright &copy; 2025-2026 *gw0* [<http://gw.tnode.com/>] &lt;<gw.2026@ena.one>&gt;
  */
 
 #include "heart_rate.h"

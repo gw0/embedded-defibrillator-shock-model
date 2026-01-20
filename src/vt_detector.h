@@ -2,6 +2,8 @@
  * EKG Signal Analyzer - VT Detection Module
  *
  * Ventricular Tachycardia detection based on QRS analysis.
+ *
+ * Copyright &copy; 2025-2026 *gw0* [<http://gw.tnode.com/>] &lt;<gw.2026@ena.one>&gt;
  */
 
 #ifndef VT_DETECTOR_H

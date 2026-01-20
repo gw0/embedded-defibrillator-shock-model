@@ -2,6 +2,8 @@
  * EKG Signal Analyzer - VF Detection Module
  *
  * Ventricular Fibrillation detection using frequency and time domain analysis.
+ *
+ * Copyright &copy; 2025-2026 *gw0* [<http://gw.tnode.com/>] &lt;<gw.2026@ena.one>&gt;
  */
 
 #ifndef VF_DETECTOR_H
