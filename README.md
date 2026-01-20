@@ -36,9 +36,7 @@ The system recommends whether a defibrillator shock should be administered based
 - **Data Type**: 16-bit signed integers (`int16_t`)
 - **Sample Rate**: 100 Hz
 - **Duration**: 3-10 seconds (300-1000 samples)
-- **Amplitude**: Any reasonable ADC range (auto-normalized internally)
-- **DC Offset**: Can be present (removed and normalized automatically)
-- **Pre-filtering**: Optional (baseline wander removal and normalization handled internally)
+- **Pre-filtering**: Baseline wander removed, noise filtered
 
 ## Output
 
