@@ -43,6 +43,12 @@ typedef struct {
     float *vf_fmax_values;    uint32_t vf_fmax_count;
     float *vf_zcr_values;     uint32_t vf_zcr_count;
     float *vf_conf_values;    uint32_t vf_conf_count;
+    float *vf_min_amp_values;       uint32_t vf_min_amp_count;
+    float *vf_dominance_values;     uint32_t vf_dominance_count;
+    float *vf_fine_amp_max_values;  uint32_t vf_fine_amp_max_count;
+    float *vf_fine_conf_values;     uint32_t vf_fine_conf_count;
+    float *vf_noise_mult_values;    uint32_t vf_noise_mult_count;
+    float *vf_amp_ratio_values;     uint32_t vf_amp_ratio_count;
 } param_grid_t;
 
 /* Progress tracker */
@@ -176,6 +182,7 @@ int main(int argc, char *argv[])
     progress.csv_file = fopen(output_file, "w");
     if (progress.csv_file != NULL) {
         fprintf(progress.csv_file, "vt_hr,vt_qrs,vt_reg,vt_conf,vf_min,vf_max,vf_zcr,vf_conf,"
+                "vf_min_amp,vf_dominance,vf_fine_amp_max,vf_fine_conf,vf_noise_mult,vf_amp_ratio,"
                 "accuracy,sensitivity,specificity,precision,f1,tp,tn,fp,fn\n");
     }
 
@@ -208,6 +215,12 @@ int main(int argc, char *argv[])
     printf("VF_FREQ_MAX: %.1f Hz\n", progress.best_config.vf_freq_max);
     printf("VF_ZCR_THRESHOLD: %.2f\n", progress.best_config.vf_zcr_threshold);
     printf("VF_CONFIDENCE_THRESHOLD: %.2f\n", progress.best_config.vf_confidence_threshold);
+    printf("VF_MIN_AMPLITUDE: %.1f\n", progress.best_config.vf_min_amplitude);
+    printf("VF_DOMINANCE_THRESHOLD: %.2f\n", progress.best_config.vf_dominance_threshold);
+    printf("VF_FINE_AMPLITUDE_MAX: %.1f\n", progress.best_config.vf_fine_amplitude_max);
+    printf("VF_FINE_CONFIDENCE: %.2f\n", progress.best_config.vf_fine_confidence);
+    printf("VF_NOISE_FLOOR_MULT: %.1f\n", progress.best_config.vf_noise_floor_mult);
+    printf("VF_AMPLITUDE_THRESH_RATIO: %.2f\n", progress.best_config.vf_amplitude_thresh_ratio);
     printf("\n");
 
     printf("PERFORMANCE METRICS:\n");
@@ -288,6 +301,48 @@ static void init_default_grid(param_grid_t *grid)
     for (uint32_t i = 0; i < grid->vf_conf_count; i++) {
         grid->vf_conf_values[i] = 0.5f + i * 0.1f;
     }
+
+    /* VF_MIN_AMPLITUDE: 50-200 step 50 (4 values) */
+    grid->vf_min_amp_count = 4;
+    grid->vf_min_amp_values = malloc(grid->vf_min_amp_count * sizeof(float));
+    for (uint32_t i = 0; i < grid->vf_min_amp_count; i++) {
+        grid->vf_min_amp_values[i] = 50.0f + i * 50.0f;
+    }
+
+    /* VF_DOMINANCE_THRESHOLD: 0.30-0.50 step 0.05 (5 values) */
+    grid->vf_dominance_count = 5;
+    grid->vf_dominance_values = malloc(grid->vf_dominance_count * sizeof(float));
+    for (uint32_t i = 0; i < grid->vf_dominance_count; i++) {
+        grid->vf_dominance_values[i] = 0.30f + i * 0.05f;
+    }
+
+    /* VF_FINE_AMPLITUDE_MAX: 150-300 step 50 (4 values) */
+    grid->vf_fine_amp_max_count = 4;
+    grid->vf_fine_amp_max_values = malloc(grid->vf_fine_amp_max_count * sizeof(float));
+    for (uint32_t i = 0; i < grid->vf_fine_amp_max_count; i++) {
+        grid->vf_fine_amp_max_values[i] = 150.0f + i * 50.0f;
+    }
+
+    /* VF_FINE_CONFIDENCE: 0.60-0.80 step 0.05 (5 values) */
+    grid->vf_fine_conf_count = 5;
+    grid->vf_fine_conf_values = malloc(grid->vf_fine_conf_count * sizeof(float));
+    for (uint32_t i = 0; i < grid->vf_fine_conf_count; i++) {
+        grid->vf_fine_conf_values[i] = 0.60f + i * 0.05f;
+    }
+
+    /* VF_NOISE_FLOOR_MULT: 2.0-4.0 step 0.5 (5 values) */
+    grid->vf_noise_mult_count = 5;
+    grid->vf_noise_mult_values = malloc(grid->vf_noise_mult_count * sizeof(float));
+    for (uint32_t i = 0; i < grid->vf_noise_mult_count; i++) {
+        grid->vf_noise_mult_values[i] = 2.0f + i * 0.5f;
+    }
+
+    /* VF_AMPLITUDE_THRESH_RATIO: 0.05-0.20 step 0.05 (4 values) */
+    grid->vf_amp_ratio_count = 4;
+    grid->vf_amp_ratio_values = malloc(grid->vf_amp_ratio_count * sizeof(float));
+    for (uint32_t i = 0; i < grid->vf_amp_ratio_count; i++) {
+        grid->vf_amp_ratio_values[i] = 0.05f + i * 0.05f;
+    }
 }
 
 /* Free grid memory */
@@ -301,6 +356,12 @@ static void free_grid(param_grid_t *grid)
     free(grid->vf_fmax_values);
     free(grid->vf_zcr_values);
     free(grid->vf_conf_values);
+    free(grid->vf_min_amp_values);
+    free(grid->vf_dominance_values);
+    free(grid->vf_fine_amp_max_values);
+    free(grid->vf_fine_conf_values);
+    free(grid->vf_noise_mult_values);
+    free(grid->vf_amp_ratio_values);
 }
 
 /* Calculate total grid size */
@@ -313,14 +374,38 @@ static uint64_t grid_size(const param_grid_t *grid)
            grid->vf_fmin_count *
            grid->vf_fmax_count *
            grid->vf_zcr_count *
-           grid->vf_conf_count;
+           grid->vf_conf_count *
+           grid->vf_min_amp_count *
+           grid->vf_dominance_count *
+           grid->vf_fine_amp_max_count *
+           grid->vf_fine_conf_count *
+           grid->vf_noise_mult_count *
+           grid->vf_amp_ratio_count;
 }
 
 /* Get configuration at grid index */
 static void grid_get_config(const param_grid_t *grid, uint64_t index, ekg_config_t *config)
 {
-    /* Decode multi-dimensional index */
+    /* Decode multi-dimensional index (reverse order of multiplication in grid_size) */
     uint64_t idx = index;
+
+    uint32_t i13 = idx % grid->vf_amp_ratio_count;
+    idx /= grid->vf_amp_ratio_count;
+
+    uint32_t i12 = idx % grid->vf_noise_mult_count;
+    idx /= grid->vf_noise_mult_count;
+
+    uint32_t i11 = idx % grid->vf_fine_conf_count;
+    idx /= grid->vf_fine_conf_count;
+
+    uint32_t i10 = idx % grid->vf_fine_amp_max_count;
+    idx /= grid->vf_fine_amp_max_count;
+
+    uint32_t i9 = idx % grid->vf_dominance_count;
+    idx /= grid->vf_dominance_count;
+
+    uint32_t i8 = idx % grid->vf_min_amp_count;
+    idx /= grid->vf_min_amp_count;
 
     uint32_t i7 = idx % grid->vf_conf_count;
     idx /= grid->vf_conf_count;
@@ -345,7 +430,7 @@ static void grid_get_config(const param_grid_t *grid, uint64_t index, ekg_config
 
     uint32_t i0 = idx % grid->vt_hr_count;
 
-    /* Build configuration */
+    /* Build configuration - all 14 parameters */
     config->vt_hr_threshold = grid->vt_hr_values[i0];
     config->vt_qrs_width_ms = grid->vt_qrs_values[i1];
     config->vt_regularity_cv = grid->vt_reg_values[i2];
@@ -354,7 +439,12 @@ static void grid_get_config(const param_grid_t *grid, uint64_t index, ekg_config
     config->vf_freq_max = grid->vf_fmax_values[i5];
     config->vf_zcr_threshold = grid->vf_zcr_values[i6];
     config->vf_confidence_threshold = grid->vf_conf_values[i7];
-    config->vf_min_amplitude = VF_MIN_AMPLITUDE;  /* Not tuned */
+    config->vf_min_amplitude = grid->vf_min_amp_values[i8];
+    config->vf_dominance_threshold = grid->vf_dominance_values[i9];
+    config->vf_fine_amplitude_max = grid->vf_fine_amp_max_values[i10];
+    config->vf_fine_confidence = grid->vf_fine_conf_values[i11];
+    config->vf_noise_floor_mult = grid->vf_noise_mult_values[i12];
+    config->vf_amplitude_thresh_ratio = grid->vf_amp_ratio_values[i13];
 }
 
 /* ========================================
@@ -385,10 +475,14 @@ static void search_random(const param_grid_t *grid, const dataset_t *dataset,
         /* Write to CSV */
         if (progress->csv_file != NULL) {
             fprintf(progress->csv_file, "%.1f,%.1f,%.1f,%.2f,%.1f,%.1f,%.2f,%.2f,"
+                    "%.1f,%.2f,%.1f,%.2f,%.1f,%.2f,"
                     "%.4f,%.4f,%.4f,%.4f,%.4f,%u,%u,%u,%u\n",
                     config.vt_hr_threshold, config.vt_qrs_width_ms, config.vt_regularity_cv,
                     config.vt_confidence_threshold, config.vf_freq_min, config.vf_freq_max,
                     config.vf_zcr_threshold, config.vf_confidence_threshold,
+                    config.vf_min_amplitude, config.vf_dominance_threshold,
+                    config.vf_fine_amplitude_max, config.vf_fine_confidence,
+                    config.vf_noise_floor_mult, config.vf_amplitude_thresh_ratio,
                     metrics->accuracy, metrics->sensitivity, metrics->specificity,
                     metrics->precision, metrics->f1_score,
                     metrics->tp, metrics->tn, metrics->fp, metrics->fn);
@@ -428,10 +522,14 @@ static void search_exhaustive(const param_grid_t *grid, const dataset_t *dataset
         /* Write to CSV */
         if (progress->csv_file != NULL) {
             fprintf(progress->csv_file, "%.1f,%.1f,%.1f,%.2f,%.1f,%.1f,%.2f,%.2f,"
+                    "%.1f,%.2f,%.1f,%.2f,%.1f,%.2f,"
                     "%.4f,%.4f,%.4f,%.4f,%.4f,%u,%u,%u,%u\n",
                     config.vt_hr_threshold, config.vt_qrs_width_ms, config.vt_regularity_cv,
                     config.vt_confidence_threshold, config.vf_freq_min, config.vf_freq_max,
                     config.vf_zcr_threshold, config.vf_confidence_threshold,
+                    config.vf_min_amplitude, config.vf_dominance_threshold,
+                    config.vf_fine_amplitude_max, config.vf_fine_confidence,
+                    config.vf_noise_floor_mult, config.vf_amplitude_thresh_ratio,
                     metrics->accuracy, metrics->sensitivity, metrics->specificity,
                     metrics->precision, metrics->f1_score,
                     metrics->tp, metrics->tn, metrics->fp, metrics->fn);
@@ -508,6 +606,42 @@ static void search_adaptive(const param_grid_t *grid, const dataset_t *dataset,
         coarse_grid.vf_conf_values[i] = grid->vf_conf_values[i < grid->vf_conf_count ? i * 2 : grid->vf_conf_count - 1];
     }
 
+    coarse_grid.vf_min_amp_count = (grid->vf_min_amp_count + 1) / 2;
+    coarse_grid.vf_min_amp_values = malloc(coarse_grid.vf_min_amp_count * sizeof(float));
+    for (uint32_t i = 0; i < coarse_grid.vf_min_amp_count; i++) {
+        coarse_grid.vf_min_amp_values[i] = grid->vf_min_amp_values[i * 2];
+    }
+
+    coarse_grid.vf_dominance_count = (grid->vf_dominance_count + 1) / 2;
+    coarse_grid.vf_dominance_values = malloc(coarse_grid.vf_dominance_count * sizeof(float));
+    for (uint32_t i = 0; i < coarse_grid.vf_dominance_count; i++) {
+        coarse_grid.vf_dominance_values[i] = grid->vf_dominance_values[i * 2];
+    }
+
+    coarse_grid.vf_fine_amp_max_count = (grid->vf_fine_amp_max_count + 1) / 2;
+    coarse_grid.vf_fine_amp_max_values = malloc(coarse_grid.vf_fine_amp_max_count * sizeof(float));
+    for (uint32_t i = 0; i < coarse_grid.vf_fine_amp_max_count; i++) {
+        coarse_grid.vf_fine_amp_max_values[i] = grid->vf_fine_amp_max_values[i * 2];
+    }
+
+    coarse_grid.vf_fine_conf_count = (grid->vf_fine_conf_count + 1) / 2;
+    coarse_grid.vf_fine_conf_values = malloc(coarse_grid.vf_fine_conf_count * sizeof(float));
+    for (uint32_t i = 0; i < coarse_grid.vf_fine_conf_count; i++) {
+        coarse_grid.vf_fine_conf_values[i] = grid->vf_fine_conf_values[i * 2];
+    }
+
+    coarse_grid.vf_noise_mult_count = (grid->vf_noise_mult_count + 1) / 2;
+    coarse_grid.vf_noise_mult_values = malloc(coarse_grid.vf_noise_mult_count * sizeof(float));
+    for (uint32_t i = 0; i < coarse_grid.vf_noise_mult_count; i++) {
+        coarse_grid.vf_noise_mult_values[i] = grid->vf_noise_mult_values[i * 2];
+    }
+
+    coarse_grid.vf_amp_ratio_count = (grid->vf_amp_ratio_count + 1) / 2;
+    coarse_grid.vf_amp_ratio_values = malloc(coarse_grid.vf_amp_ratio_count * sizeof(float));
+    for (uint32_t i = 0; i < coarse_grid.vf_amp_ratio_count; i++) {
+        coarse_grid.vf_amp_ratio_values[i] = grid->vf_amp_ratio_values[i * 2];
+    }
+
     uint64_t coarse_size = grid_size(&coarse_grid);
     progress->total_combinations = coarse_size + 1000;  /* Estimate */
 
@@ -560,6 +694,12 @@ static int write_best_config_header(const char *filename, const ekg_config_t *co
     fprintf(f, "#define VF_FREQ_MAX           %.1ff\n", config->vf_freq_max);
     fprintf(f, "#define VF_ZCR_THRESHOLD      %.2ff\n", config->vf_zcr_threshold);
     fprintf(f, "#define VF_CONFIDENCE_THRESHOLD %.2ff\n", config->vf_confidence_threshold);
+    fprintf(f, "#define VF_MIN_AMPLITUDE      %.1ff\n", config->vf_min_amplitude);
+    fprintf(f, "#define VF_DOMINANCE_THRESHOLD %.2ff\n", config->vf_dominance_threshold);
+    fprintf(f, "#define VF_FINE_AMPLITUDE_MAX %.1ff\n", config->vf_fine_amplitude_max);
+    fprintf(f, "#define VF_FINE_CONFIDENCE    %.2ff\n", config->vf_fine_confidence);
+    fprintf(f, "#define VF_NOISE_FLOOR_MULT   %.1ff\n", config->vf_noise_floor_mult);
+    fprintf(f, "#define VF_AMPLITUDE_THRESHOLD_RATIO %.2ff\n", config->vf_amplitude_thresh_ratio);
     fprintf(f, "\n#endif /* EKG_OPTIMIZED_CONFIG_H */\n");
 
     fclose(f);

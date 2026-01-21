@@ -290,15 +290,10 @@ void evaluate_config(const ekg_config_t *config, const dataset_t *dataset,
         }
 
         /* Update overall confusion matrix */
-        if (file_shock_advised && file->ground_truth_shock) {
-            result->overall.tp++;
-        } else if (!file_shock_advised && !file->ground_truth_shock) {
-            result->overall.tn++;
-        } else if (file_shock_advised && !file->ground_truth_shock) {
-            result->overall.fp++;
-        } else if (!file_shock_advised && file->ground_truth_shock) {
-            result->overall.fn++;
-        }
+        result->overall.tp += (file_shock_advised && file->ground_truth_shock);
+        result->overall.tn += (!file_shock_advised && !file->ground_truth_shock);
+        result->overall.fp += (file_shock_advised && !file->ground_truth_shock);
+        result->overall.fn += (!file_shock_advised && file->ground_truth_shock);
 
         /* Update per-rhythm metrics based on rhythm type */
         metrics_t *rhythm_metric = NULL;
@@ -333,21 +328,14 @@ void evaluate_config(const ekg_config_t *config, const dataset_t *dataset,
                 break;
         }
 
-        if (is_shockable) {
-            /* Shockable: TP = shock advised, FN = shock not advised */
-            if (file_shock_advised) {
-                rhythm_metric->tp++;
-            } else {
-                rhythm_metric->fn++;
-            }
-        } else {
-            /* Non-shockable: TN = correctly rejected, FP = false alarm */
-            if (!file_shock_advised) {
-                rhythm_metric->tn++;
-            } else {
-                rhythm_metric->fp++;
-            }
-        }
+        /*
+         * Update per-rhythm confusion matrix. Due to fixed ground truths,
+         * shockable rhythms only accumulate TP/FN, non-shockable only TN/FP.
+         */
+        rhythm_metric->tp += (file_shock_advised && is_shockable);
+        rhythm_metric->tn += (!file_shock_advised && !is_shockable);
+        rhythm_metric->fp += (file_shock_advised && !is_shockable);
+        rhythm_metric->fn += (!file_shock_advised && is_shockable);
     }
 
     free(raw_samples);
@@ -463,4 +451,10 @@ void print_config_params(const ekg_config_t *config)
     printf("  VF_FREQ_MAX:          %.1f Hz\n", config->vf_freq_max);
     printf("  VF_ZCR_THRESHOLD:     %.2f\n", config->vf_zcr_threshold);
     printf("  VF_CONFIDENCE:        %.2f\n", config->vf_confidence_threshold);
+    printf("  VF_MIN_AMPLITUDE:     %.1f\n", config->vf_min_amplitude);
+    printf("  VF_DOMINANCE_THRESH:  %.2f\n", config->vf_dominance_threshold);
+    printf("  VF_FINE_AMP_MAX:      %.1f\n", config->vf_fine_amplitude_max);
+    printf("  VF_FINE_CONFIDENCE:   %.2f\n", config->vf_fine_confidence);
+    printf("  VF_NOISE_FLOOR_MULT:  %.1f\n", config->vf_noise_floor_mult);
+    printf("  VF_AMP_THRESH_RATIO:  %.2f\n", config->vf_amplitude_thresh_ratio);
 }
