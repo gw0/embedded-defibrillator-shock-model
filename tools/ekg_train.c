@@ -74,10 +74,12 @@ static void grid_get_config(const param_grid_t *grid, uint64_t index, ekg_config
 /* Search strategies */
 static void search_random(const param_grid_t *grid, const dataset_t *dataset,
                          uint32_t num_samples, progress_t *progress, uint32_t source_sample_rate);
+static void search_local(const param_grid_t *grid, const dataset_t *dataset,
+                        uint32_t num_samples, progress_t *progress, uint32_t source_sample_rate);
 static void search_exhaustive(const param_grid_t *grid, const dataset_t *dataset,
                               progress_t *progress, uint32_t source_sample_rate);
 static void search_adaptive(const param_grid_t *grid, const dataset_t *dataset,
-                           progress_t *progress, uint32_t source_sample_rate);
+                           uint32_t num_combinations, progress_t *progress, uint32_t source_sample_rate);
 
 /* Output generation */
 static int write_best_config_header(const char *filename, const ekg_config_t *config,
@@ -97,7 +99,7 @@ int main(int argc, char *argv[])
     const char *strategy = "random";
     const char *output_file = "outputs/results.csv";
     const char *config_file = "outputs/best_config.h";
-    uint32_t num_combinations = 500;
+    uint32_t num_combinations = 2000;
     uint32_t source_sample_rate = 100;  /* Default: no downsampling */
 
     /* Parse arguments */
@@ -192,7 +194,7 @@ int main(int argc, char *argv[])
         search_exhaustive(&grid, &dataset, &progress, source_sample_rate);
     } else if (strcmp(strategy, "adaptive") == 0) {
         printf("Starting adaptive search...\n");
-        search_adaptive(&grid, &dataset, &progress, source_sample_rate);
+        search_adaptive(&grid, &dataset, num_combinations, &progress, source_sample_rate);
     } else {
         progress.total_combinations = num_combinations;
         printf("Starting random search (%u combinations)...\n", num_combinations);
@@ -202,6 +204,19 @@ int main(int argc, char *argv[])
     if (progress.csv_file != NULL) {
         fclose(progress.csv_file);
         printf("\nResults saved to: %s\n", output_file);
+    }
+
+    /* Compare with baseline - only report improvement if search found better */
+    ekg_config_t baseline = EKG_DEFAULT_CONFIG;
+    eval_result_t baseline_result;
+    evaluate_config(&baseline, &dataset, NULL, dataset.count, &baseline_result, source_sample_rate);
+    printf("\nBaseline F1=%.4f, Search best F1=%.4f\n",
+           baseline_result.overall.f1_score, progress.best_metrics.f1_score);
+
+    if (progress.best_metrics.f1_score <= baseline_result.overall.f1_score) {
+        printf("Search did not improve upon baseline. Keeping current config.\n");
+        progress.best_config = baseline;
+        progress.best_metrics = baseline_result.overall;
     }
 
     printf("\n========================================\n");
@@ -458,7 +473,6 @@ static void search_random(const param_grid_t *grid, const dataset_t *dataset,
     srand(42);  /* Fixed seed for reproducibility */
 
     uint64_t total_size = grid_size(grid);
-    progress->best_metrics.f1_score = 0.0f;
 
     for (uint32_t i = 0; i < num_combinations; i++) {
         /* Random configuration */
@@ -500,6 +514,44 @@ static void search_random(const param_grid_t *grid, const dataset_t *dataset,
         if ((i + 1) % 10 == 0 || i == num_combinations - 1) {
             print_progress(progress);
         }
+    }
+}
+
+/* Local search around best config */
+static void search_local(const param_grid_t *grid, const dataset_t *dataset,
+                        uint32_t num_samples, progress_t *progress, uint32_t source_sample_rate)
+{
+    for (uint32_t i = 0; i < num_samples; i++) {
+        ekg_config_t config = progress->best_config;
+
+        /* Randomly perturb each parameter with 30% probability */
+        if (rand() % 10 < 3) config.vt_hr_threshold = grid->vt_hr_values[rand() % grid->vt_hr_count];
+        if (rand() % 10 < 3) config.vt_qrs_width_ms = grid->vt_qrs_values[rand() % grid->vt_qrs_count];
+        if (rand() % 10 < 3) config.vt_regularity_cv = grid->vt_reg_values[rand() % grid->vt_reg_count];
+        if (rand() % 10 < 3) config.vt_confidence_threshold = grid->vt_conf_values[rand() % grid->vt_conf_count];
+        if (rand() % 10 < 3) config.vf_freq_min = grid->vf_fmin_values[rand() % grid->vf_fmin_count];
+        if (rand() % 10 < 3) config.vf_freq_max = grid->vf_fmax_values[rand() % grid->vf_fmax_count];
+        if (rand() % 10 < 3) config.vf_zcr_threshold = grid->vf_zcr_values[rand() % grid->vf_zcr_count];
+        if (rand() % 10 < 3) config.vf_confidence_threshold = grid->vf_conf_values[rand() % grid->vf_conf_count];
+        if (rand() % 10 < 3) config.vf_min_amplitude = grid->vf_min_amp_values[rand() % grid->vf_min_amp_count];
+        if (rand() % 10 < 3) config.vf_dominance_threshold = grid->vf_dominance_values[rand() % grid->vf_dominance_count];
+        if (rand() % 10 < 3) config.vf_fine_amplitude_max = grid->vf_fine_amp_max_values[rand() % grid->vf_fine_amp_max_count];
+        if (rand() % 10 < 3) config.vf_fine_confidence = grid->vf_fine_conf_values[rand() % grid->vf_fine_conf_count];
+        if (rand() % 10 < 3) config.vf_noise_floor_mult = grid->vf_noise_mult_values[rand() % grid->vf_noise_mult_count];
+        if (rand() % 10 < 3) config.vf_amplitude_thresh_ratio = grid->vf_amp_ratio_values[rand() % grid->vf_amp_ratio_count];
+
+        /* Evaluate */
+        eval_result_t result;
+        evaluate_config(&config, dataset, NULL, dataset->count, &result, source_sample_rate);
+
+        /* Update best if improved */
+        if (result.overall.f1_score > progress->best_metrics.f1_score) {
+            progress->best_metrics = result.overall;
+            progress->best_config = config;
+        }
+
+        progress->completed++;
+        if (progress->completed % 1000 == 0) print_progress(progress);
     }
 }
 
@@ -552,120 +604,21 @@ static void search_exhaustive(const param_grid_t *grid, const dataset_t *dataset
 
 /* Adaptive search */
 static void search_adaptive(const param_grid_t *grid, const dataset_t *dataset,
-                           progress_t *progress, uint32_t source_sample_rate)
+                           uint32_t num_combinations, progress_t *progress, uint32_t source_sample_rate)
 {
-    /* Phase 1: Coarse search (double step sizes) */
-    param_grid_t coarse_grid;
+    srand(42);  /* Fixed seed for reproducibility */
 
-    /* Create coarse grid with larger steps */
-    coarse_grid.vt_hr_count = (grid->vt_hr_count + 1) / 2;
-    coarse_grid.vt_hr_values = malloc(coarse_grid.vt_hr_count * sizeof(float));
-    for (uint32_t i = 0; i < coarse_grid.vt_hr_count; i++) {
-        coarse_grid.vt_hr_values[i] = grid->vt_hr_values[i * 2];
-    }
+    uint32_t phase1_samples = num_combinations;
+    uint32_t phase2_samples = num_combinations * 4;
+    progress->total_combinations = phase1_samples + phase2_samples;
 
-    coarse_grid.vt_qrs_count = (grid->vt_qrs_count + 1) / 2;
-    coarse_grid.vt_qrs_values = malloc(coarse_grid.vt_qrs_count * sizeof(float));
-    for (uint32_t i = 0; i < coarse_grid.vt_qrs_count; i++) {
-        coarse_grid.vt_qrs_values[i] = grid->vt_qrs_values[i < grid->vt_qrs_count ? i * 2 : grid->vt_qrs_count - 1];
-    }
+    /* Phase 1: Random global search */
+    printf("Phase 1: Random search (%u samples)\n", phase1_samples);
+    search_random(grid, dataset, phase1_samples, progress, source_sample_rate);
 
-    coarse_grid.vt_reg_count = (grid->vt_reg_count + 1) / 2;
-    coarse_grid.vt_reg_values = malloc(coarse_grid.vt_reg_count * sizeof(float));
-    for (uint32_t i = 0; i < coarse_grid.vt_reg_count; i++) {
-        coarse_grid.vt_reg_values[i] = grid->vt_reg_values[i * 2];
-    }
-
-    coarse_grid.vt_conf_count = (grid->vt_conf_count + 1) / 2;
-    coarse_grid.vt_conf_values = malloc(coarse_grid.vt_conf_count * sizeof(float));
-    for (uint32_t i = 0; i < coarse_grid.vt_conf_count; i++) {
-        coarse_grid.vt_conf_values[i] = grid->vt_conf_values[i < grid->vt_conf_count ? i * 2 : grid->vt_conf_count - 1];
-    }
-
-    coarse_grid.vf_fmin_count = (grid->vf_fmin_count + 1) / 2;
-    coarse_grid.vf_fmin_values = malloc(coarse_grid.vf_fmin_count * sizeof(float));
-    for (uint32_t i = 0; i < coarse_grid.vf_fmin_count; i++) {
-        coarse_grid.vf_fmin_values[i] = grid->vf_fmin_values[i * 2];
-    }
-
-    coarse_grid.vf_fmax_count = (grid->vf_fmax_count + 1) / 2;
-    coarse_grid.vf_fmax_values = malloc(coarse_grid.vf_fmax_count * sizeof(float));
-    for (uint32_t i = 0; i < coarse_grid.vf_fmax_count; i++) {
-        coarse_grid.vf_fmax_values[i] = grid->vf_fmax_values[i < grid->vf_fmax_count ? i * 2 : grid->vf_fmax_count - 1];
-    }
-
-    coarse_grid.vf_zcr_count = (grid->vf_zcr_count + 1) / 2;
-    coarse_grid.vf_zcr_values = malloc(coarse_grid.vf_zcr_count * sizeof(float));
-    for (uint32_t i = 0; i < coarse_grid.vf_zcr_count; i++) {
-        coarse_grid.vf_zcr_values[i] = grid->vf_zcr_values[i * 2];
-    }
-
-    coarse_grid.vf_conf_count = (grid->vf_conf_count + 1) / 2;
-    coarse_grid.vf_conf_values = malloc(coarse_grid.vf_conf_count * sizeof(float));
-    for (uint32_t i = 0; i < coarse_grid.vf_conf_count; i++) {
-        coarse_grid.vf_conf_values[i] = grid->vf_conf_values[i < grid->vf_conf_count ? i * 2 : grid->vf_conf_count - 1];
-    }
-
-    coarse_grid.vf_min_amp_count = (grid->vf_min_amp_count + 1) / 2;
-    coarse_grid.vf_min_amp_values = malloc(coarse_grid.vf_min_amp_count * sizeof(float));
-    for (uint32_t i = 0; i < coarse_grid.vf_min_amp_count; i++) {
-        coarse_grid.vf_min_amp_values[i] = grid->vf_min_amp_values[i * 2];
-    }
-
-    coarse_grid.vf_dominance_count = (grid->vf_dominance_count + 1) / 2;
-    coarse_grid.vf_dominance_values = malloc(coarse_grid.vf_dominance_count * sizeof(float));
-    for (uint32_t i = 0; i < coarse_grid.vf_dominance_count; i++) {
-        coarse_grid.vf_dominance_values[i] = grid->vf_dominance_values[i * 2];
-    }
-
-    coarse_grid.vf_fine_amp_max_count = (grid->vf_fine_amp_max_count + 1) / 2;
-    coarse_grid.vf_fine_amp_max_values = malloc(coarse_grid.vf_fine_amp_max_count * sizeof(float));
-    for (uint32_t i = 0; i < coarse_grid.vf_fine_amp_max_count; i++) {
-        coarse_grid.vf_fine_amp_max_values[i] = grid->vf_fine_amp_max_values[i * 2];
-    }
-
-    coarse_grid.vf_fine_conf_count = (grid->vf_fine_conf_count + 1) / 2;
-    coarse_grid.vf_fine_conf_values = malloc(coarse_grid.vf_fine_conf_count * sizeof(float));
-    for (uint32_t i = 0; i < coarse_grid.vf_fine_conf_count; i++) {
-        coarse_grid.vf_fine_conf_values[i] = grid->vf_fine_conf_values[i * 2];
-    }
-
-    coarse_grid.vf_noise_mult_count = (grid->vf_noise_mult_count + 1) / 2;
-    coarse_grid.vf_noise_mult_values = malloc(coarse_grid.vf_noise_mult_count * sizeof(float));
-    for (uint32_t i = 0; i < coarse_grid.vf_noise_mult_count; i++) {
-        coarse_grid.vf_noise_mult_values[i] = grid->vf_noise_mult_values[i * 2];
-    }
-
-    coarse_grid.vf_amp_ratio_count = (grid->vf_amp_ratio_count + 1) / 2;
-    coarse_grid.vf_amp_ratio_values = malloc(coarse_grid.vf_amp_ratio_count * sizeof(float));
-    for (uint32_t i = 0; i < coarse_grid.vf_amp_ratio_count; i++) {
-        coarse_grid.vf_amp_ratio_values[i] = grid->vf_amp_ratio_values[i * 2];
-    }
-
-    uint64_t coarse_size = grid_size(&coarse_grid);
-    progress->total_combinations = coarse_size + 1000;  /* Estimate */
-
-    printf("Phase 1: Coarse search (%lu combinations)\n", coarse_size);
-
-    /* Run coarse search */
-    progress_t coarse_progress = {0};
-    coarse_progress.start_time = progress->start_time;
-    coarse_progress.total_combinations = coarse_size;
-    coarse_progress.csv_file = progress->csv_file;
-
-    search_exhaustive(&coarse_grid, dataset, &coarse_progress, source_sample_rate);
-
-    /* Use best from coarse search */
-    progress->best_config = coarse_progress.best_config;
-    progress->best_metrics = coarse_progress.best_metrics;
-    progress->completed = coarse_size;
-
-    printf("\nPhase 2: Fine search around best (random sampling)\n");
-
-    /* Phase 2: Random search around best */
-    search_random(grid, dataset, 1000, progress, source_sample_rate);
-
-    free_grid(&coarse_grid);
+    /* Phase 2: Local search around best */
+    printf("\nPhase 2: Local search around best (%u samples)\n", phase2_samples);
+    search_local(grid, dataset, phase2_samples, progress, source_sample_rate);
 }
 
 /* ========================================
@@ -718,7 +671,7 @@ static void print_help(const char *prog_name)
     printf("  %s [OPTIONS] <dataset_path>\n\n", prog_name);
     printf("OPTIONS:\n");
     printf("  -s, --strategy <type>      Search strategy: random, exhaustive, adaptive (default: random)\n");
-    printf("  -n, --num-combinations <N> Number of combinations for random search (default: 500)\n");
+    printf("  -n, --num-combinations <N> Number of combinations (default: 2000)\n");
     printf("  -o, --output <file>        Output CSV file (default: results.csv)\n");
     printf("  -c, --config <file>        Best config header file (default: best_config.h)\n");
     printf("  -r, --sample-rate <Hz>     Source sample rate (default: 100)\n");
@@ -738,4 +691,5 @@ static void print_progress(const progress_t *progress)
     printf("Progress: %lu/%lu (%.1f%%) - Best F1=%.3f\n",
            progress->completed, progress->total_combinations, percent,
            progress->best_metrics.f1_score);
+    fflush(stdout);
 }
