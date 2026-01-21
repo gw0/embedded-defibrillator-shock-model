@@ -195,6 +195,11 @@ int main(int argc, char *argv[])
     } else if (strcmp(strategy, "adaptive") == 0) {
         printf("Starting adaptive search...\n");
         search_adaptive(&grid, &dataset, num_combinations, &progress, source_sample_rate);
+    } else if (strcmp(strategy, "local") == 0) {
+        progress.best_config = EKG_DEFAULT_CONFIG;
+        progress.total_combinations = num_combinations;
+        printf("Starting local search (%u combinations)...\n", num_combinations);
+        search_local(&grid, &dataset, num_combinations, &progress, source_sample_rate);
     } else {
         progress.total_combinations = num_combinations;
         printf("Starting random search (%u combinations)...\n", num_combinations);
@@ -468,13 +473,13 @@ static void grid_get_config(const param_grid_t *grid, uint64_t index, ekg_config
 
 /* Random search */
 static void search_random(const param_grid_t *grid, const dataset_t *dataset,
-                         uint32_t num_combinations, progress_t *progress, uint32_t source_sample_rate)
+                         uint32_t num_samples, progress_t *progress, uint32_t source_sample_rate)
 {
     srand(42);  /* Fixed seed for reproducibility */
 
     uint64_t total_size = grid_size(grid);
 
-    for (uint32_t i = 0; i < num_combinations; i++) {
+    for (uint32_t i = 0; i < num_samples; i++) {
         /* Random configuration */
         uint64_t random_idx = ((uint64_t)rand() * rand()) % total_size;
 
@@ -508,10 +513,10 @@ static void search_random(const param_grid_t *grid, const dataset_t *dataset,
             progress->best_config = config;
         }
 
-        progress->completed = i + 1;
+        progress->completed++;
 
         /* Print progress every 10 combinations */
-        if ((i + 1) % 10 == 0 || i == num_combinations - 1) {
+        if (progress->completed % 10 == 0 || i == num_samples - 1) {
             print_progress(progress);
         }
     }
@@ -521,37 +526,60 @@ static void search_random(const param_grid_t *grid, const dataset_t *dataset,
 static void search_local(const param_grid_t *grid, const dataset_t *dataset,
                         uint32_t num_samples, progress_t *progress, uint32_t source_sample_rate)
 {
+    srand(42);  /* Fixed seed for reproducibility */
+
     for (uint32_t i = 0; i < num_samples; i++) {
         ekg_config_t config = progress->best_config;
 
-        /* Randomly perturb each parameter with 30% probability */
-        if (rand() % 10 < 3) config.vt_hr_threshold = grid->vt_hr_values[rand() % grid->vt_hr_count];
-        if (rand() % 10 < 3) config.vt_qrs_width_ms = grid->vt_qrs_values[rand() % grid->vt_qrs_count];
-        if (rand() % 10 < 3) config.vt_regularity_cv = grid->vt_reg_values[rand() % grid->vt_reg_count];
-        if (rand() % 10 < 3) config.vt_confidence_threshold = grid->vt_conf_values[rand() % grid->vt_conf_count];
-        if (rand() % 10 < 3) config.vf_freq_min = grid->vf_fmin_values[rand() % grid->vf_fmin_count];
-        if (rand() % 10 < 3) config.vf_freq_max = grid->vf_fmax_values[rand() % grid->vf_fmax_count];
-        if (rand() % 10 < 3) config.vf_zcr_threshold = grid->vf_zcr_values[rand() % grid->vf_zcr_count];
-        if (rand() % 10 < 3) config.vf_confidence_threshold = grid->vf_conf_values[rand() % grid->vf_conf_count];
-        if (rand() % 10 < 3) config.vf_min_amplitude = grid->vf_min_amp_values[rand() % grid->vf_min_amp_count];
-        if (rand() % 10 < 3) config.vf_dominance_threshold = grid->vf_dominance_values[rand() % grid->vf_dominance_count];
-        if (rand() % 10 < 3) config.vf_fine_amplitude_max = grid->vf_fine_amp_max_values[rand() % grid->vf_fine_amp_max_count];
-        if (rand() % 10 < 3) config.vf_fine_confidence = grid->vf_fine_conf_values[rand() % grid->vf_fine_conf_count];
-        if (rand() % 10 < 3) config.vf_noise_floor_mult = grid->vf_noise_mult_values[rand() % grid->vf_noise_mult_count];
-        if (rand() % 10 < 3) config.vf_amplitude_thresh_ratio = grid->vf_amp_ratio_values[rand() % grid->vf_amp_ratio_count];
+        /* Randomly perturb each parameter with 20% probability */
+        if (rand() % 10 < 2) config.vt_hr_threshold = grid->vt_hr_values[rand() % grid->vt_hr_count];
+        if (rand() % 10 < 2) config.vt_qrs_width_ms = grid->vt_qrs_values[rand() % grid->vt_qrs_count];
+        if (rand() % 10 < 2) config.vt_regularity_cv = grid->vt_reg_values[rand() % grid->vt_reg_count];
+        if (rand() % 10 < 2) config.vt_confidence_threshold = grid->vt_conf_values[rand() % grid->vt_conf_count];
+        if (rand() % 10 < 2) config.vf_freq_min = grid->vf_fmin_values[rand() % grid->vf_fmin_count];
+        if (rand() % 10 < 2) config.vf_freq_max = grid->vf_fmax_values[rand() % grid->vf_fmax_count];
+        if (rand() % 10 < 2) config.vf_zcr_threshold = grid->vf_zcr_values[rand() % grid->vf_zcr_count];
+        if (rand() % 10 < 2) config.vf_confidence_threshold = grid->vf_conf_values[rand() % grid->vf_conf_count];
+        if (rand() % 10 < 2) config.vf_min_amplitude = grid->vf_min_amp_values[rand() % grid->vf_min_amp_count];
+        if (rand() % 10 < 2) config.vf_dominance_threshold = grid->vf_dominance_values[rand() % grid->vf_dominance_count];
+        if (rand() % 10 < 2) config.vf_fine_amplitude_max = grid->vf_fine_amp_max_values[rand() % grid->vf_fine_amp_max_count];
+        if (rand() % 10 < 2) config.vf_fine_confidence = grid->vf_fine_conf_values[rand() % grid->vf_fine_conf_count];
+        if (rand() % 10 < 2) config.vf_noise_floor_mult = grid->vf_noise_mult_values[rand() % grid->vf_noise_mult_count];
+        if (rand() % 10 < 2) config.vf_amplitude_thresh_ratio = grid->vf_amp_ratio_values[rand() % grid->vf_amp_ratio_count];
 
         /* Evaluate */
         eval_result_t result;
         evaluate_config(&config, dataset, NULL, dataset->count, &result, source_sample_rate);
+        metrics_t *metrics = &result.overall;
+
+        /* Write to CSV */
+        if (progress->csv_file != NULL) {
+            fprintf(progress->csv_file, "%.1f,%.1f,%.1f,%.2f,%.1f,%.1f,%.2f,%.2f,"
+                    "%.1f,%.2f,%.1f,%.2f,%.1f,%.2f,"
+                    "%.4f,%.4f,%.4f,%.4f,%.4f,%u,%u,%u,%u\n",
+                    config.vt_hr_threshold, config.vt_qrs_width_ms, config.vt_regularity_cv,
+                    config.vt_confidence_threshold, config.vf_freq_min, config.vf_freq_max,
+                    config.vf_zcr_threshold, config.vf_confidence_threshold,
+                    config.vf_min_amplitude, config.vf_dominance_threshold,
+                    config.vf_fine_amplitude_max, config.vf_fine_confidence,
+                    config.vf_noise_floor_mult, config.vf_amplitude_thresh_ratio,
+                    metrics->accuracy, metrics->sensitivity, metrics->specificity,
+                    metrics->precision, metrics->f1_score,
+                    metrics->tp, metrics->tn, metrics->fp, metrics->fn);
+        }
 
         /* Update best if improved */
-        if (result.overall.f1_score > progress->best_metrics.f1_score) {
-            progress->best_metrics = result.overall;
+        if (metrics->f1_score > progress->best_metrics.f1_score) {
+            progress->best_metrics = *metrics;
             progress->best_config = config;
         }
 
         progress->completed++;
-        if (progress->completed % 1000 == 0) print_progress(progress);
+
+        /* Print progress every 10 combinations */
+        if (progress->completed % 10 == 0 || i == num_samples - 1) {
+            print_progress(progress);
+        }
     }
 }
 
@@ -606,8 +634,6 @@ static void search_exhaustive(const param_grid_t *grid, const dataset_t *dataset
 static void search_adaptive(const param_grid_t *grid, const dataset_t *dataset,
                            uint32_t num_combinations, progress_t *progress, uint32_t source_sample_rate)
 {
-    srand(42);  /* Fixed seed for reproducibility */
-
     uint32_t phase1_samples = num_combinations;
     uint32_t phase2_samples = num_combinations * 4;
     progress->total_combinations = phase1_samples + phase2_samples;
@@ -670,7 +696,7 @@ static void print_help(const char *prog_name)
     printf("USAGE:\n");
     printf("  %s [OPTIONS] <dataset_path>\n\n", prog_name);
     printf("OPTIONS:\n");
-    printf("  -s, --strategy <type>      Search strategy: random, exhaustive, adaptive (default: random)\n");
+    printf("  -s, --strategy <type>      Search strategy: random, local, exhaustive, adaptive (default: random)\n");
     printf("  -n, --num-combinations <N> Number of combinations (default: 2000)\n");
     printf("  -o, --output <file>        Output CSV file (default: results.csv)\n");
     printf("  -c, --config <file>        Best config header file (default: best_config.h)\n");
