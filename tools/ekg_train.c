@@ -378,8 +378,9 @@ static void search_random(const param_grid_t *grid, const dataset_t *dataset,
         grid_get_config(grid, random_idx, &config);
 
         /* Evaluate */
-        metrics_t metrics;
-        evaluate_config(&config, dataset, NULL, dataset->count, &metrics, source_sample_rate);
+        eval_result_t result;
+        evaluate_config(&config, dataset, NULL, dataset->count, &result, source_sample_rate);
+        metrics_t *metrics = &result.overall;
 
         /* Write to CSV */
         if (progress->csv_file != NULL) {
@@ -388,14 +389,14 @@ static void search_random(const param_grid_t *grid, const dataset_t *dataset,
                     config.vt_hr_threshold, config.vt_qrs_width_ms, config.vt_regularity_cv,
                     config.vt_confidence_threshold, config.vf_freq_min, config.vf_freq_max,
                     config.vf_zcr_threshold, config.vf_confidence_threshold,
-                    metrics.accuracy, metrics.sensitivity, metrics.specificity,
-                    metrics.precision, metrics.f1_score,
-                    metrics.tp, metrics.tn, metrics.fp, metrics.fn);
+                    metrics->accuracy, metrics->sensitivity, metrics->specificity,
+                    metrics->precision, metrics->f1_score,
+                    metrics->tp, metrics->tn, metrics->fp, metrics->fn);
         }
 
         /* Update best */
-        if (metrics.f1_score > progress->best_metrics.f1_score) {
-            progress->best_metrics = metrics;
+        if (metrics->f1_score > progress->best_metrics.f1_score) {
+            progress->best_metrics = *metrics;
             progress->best_config = config;
         }
 
@@ -420,8 +421,9 @@ static void search_exhaustive(const param_grid_t *grid, const dataset_t *dataset
         grid_get_config(grid, i, &config);
 
         /* Evaluate */
-        metrics_t metrics;
-        evaluate_config(&config, dataset, NULL, dataset->count, &metrics, source_sample_rate);
+        eval_result_t result;
+        evaluate_config(&config, dataset, NULL, dataset->count, &result, source_sample_rate);
+        metrics_t *metrics = &result.overall;
 
         /* Write to CSV */
         if (progress->csv_file != NULL) {
@@ -430,14 +432,14 @@ static void search_exhaustive(const param_grid_t *grid, const dataset_t *dataset
                     config.vt_hr_threshold, config.vt_qrs_width_ms, config.vt_regularity_cv,
                     config.vt_confidence_threshold, config.vf_freq_min, config.vf_freq_max,
                     config.vf_zcr_threshold, config.vf_confidence_threshold,
-                    metrics.accuracy, metrics.sensitivity, metrics.specificity,
-                    metrics.precision, metrics.f1_score,
-                    metrics.tp, metrics.tn, metrics.fp, metrics.fn);
+                    metrics->accuracy, metrics->sensitivity, metrics->specificity,
+                    metrics->precision, metrics->f1_score,
+                    metrics->tp, metrics->tn, metrics->fp, metrics->fn);
         }
 
         /* Update best */
-        if (metrics.f1_score > progress->best_metrics.f1_score) {
-            progress->best_metrics = metrics;
+        if (metrics->f1_score > progress->best_metrics.f1_score) {
+            progress->best_metrics = *metrics;
             progress->best_config = config;
         }
 

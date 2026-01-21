@@ -20,15 +20,21 @@
  */
 typedef struct {
     uint8_t vf_detected;      /* 1 if VF detected, 0 otherwise */
+    uint8_t is_fine_vf;       /* 1 if detected via fine VF path */
     float confidence;         /* 0.0 to 1.0 */
     float dominant_freq;      /* Dominant frequency in Hz */
     float zero_crossing_rate; /* Zero crossings per second */
+    float threshold_crossing_rate; /* Threshold-based crossings per second */
     float amplitude;          /* Peak-to-peak amplitude */
+    float noise_floor;        /* Estimated noise floor */
+    float adaptive_threshold; /* Computed adaptive amplitude threshold */
     uint8_t qrs_absent;       /* 1 if no QRS detected */
 } vf_detection_result_t;
 
 /**
- * Calculate magnitude at specific frequency using Goertzel algorithm
+ * Calculate magnitude at specific frequency using Goertzel algorithm with Hanning window
+ *
+ * Applies Hanning window to reduce spectral leakage before Goertzel.
  *
  * @param signal      Input signal
  * @param num_samples Number of samples
@@ -40,15 +46,18 @@ float goertzel_magnitude(const float *signal, uint16_t num_samples,
                         float target_freq, uint16_t sample_rate);
 
 /**
- * Find dominant frequency in VF range (4-10 Hz)
+ * Find dominant frequency in VF range with configurable resolution
  *
- * @param signal      Input signal
- * @param num_samples Number of samples
- * @param sample_rate Sample rate in Hz
- * @return            Dominant frequency in Hz, or 0 if not in VF range
+ * Uses 0.5 Hz resolution and windowed Goertzel for better frequency estimation.
+ *
+ * @param signal            Input signal
+ * @param num_samples       Number of samples
+ * @param sample_rate       Sample rate in Hz
+ * @param dominance_thresh  Dominance threshold (0.0-1.0)
+ * @return                  Dominant frequency in Hz, or 0 if not dominant enough
  */
 float find_dominant_frequency(const float *signal, uint16_t num_samples,
-                              uint16_t sample_rate);
+                              uint16_t sample_rate, float dominance_thresh);
 
 /**
  * Calculate zero-crossing rate
@@ -69,6 +78,29 @@ float calculate_zero_crossing_rate(const float *signal, uint16_t num_samples,
  * @return            Peak-to-peak amplitude
  */
 float calculate_amplitude(const float *signal, uint16_t num_samples);
+
+/**
+ * Estimate noise floor using median absolute deviation
+ *
+ * @param signal      Input signal
+ * @param num_samples Number of samples
+ * @return            Estimated noise floor
+ */
+float estimate_noise_floor(const float *signal, uint16_t num_samples);
+
+/**
+ * Calculate threshold-based crossing rate
+ *
+ * Counts crossings where amplitude exceeds threshold (noise-robust alternative to ZCR)
+ *
+ * @param signal      Input signal
+ * @param num_samples Number of samples
+ * @param sample_rate Sample rate in Hz
+ * @param threshold   Amplitude threshold (e.g., 10% of peak)
+ * @return            Threshold crossings per second
+ */
+float calculate_threshold_crossing_rate(const float *signal, uint16_t num_samples,
+                                        uint16_t sample_rate, float threshold);
 
 /**
  * Detect Ventricular Fibrillation

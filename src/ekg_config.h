@@ -38,23 +38,30 @@
 /* VT Detection */
 #define VT_HR_THRESHOLD       120.0f  /* bpm */
 #define VT_QRS_WIDTH_MS       100.0f  /* ms */
-#define VT_QRS_WIDTH_SAMPLES  (VT_QRS_WIDTH_MS * EKG_SAMPLE_RATE / 1000.0f)  /* 11 */
-#define VT_REGULARITY_CV      15.0f   /* percent (CV < 15% is regular) */
+#define VT_QRS_WIDTH_SAMPLES  (VT_QRS_WIDTH_MS * EKG_SAMPLE_RATE / 1000.0f)  /* 10 */
+#define VT_REGULARITY_CV      30.0f   /* percent */
 #define VT_MIN_CONSECUTIVE    3       /* Minimum consecutive wide QRS */
 #define VT_CONFIDENCE_THRESHOLD 0.80f  /* Confidence threshold for VT */
 
 /* VF Detection */
-#define VF_FREQ_MIN           4.0f    /* Hz */
-#define VF_FREQ_MAX           12.0f    /* Hz */
-#define VF_ZCR_THRESHOLD      0.25f   /* Zero-crossing rate threshold */
+#define VF_FREQ_MIN           3.5f    /* Hz */
+#define VF_FREQ_MAX           10.5f   /* Hz */
+#define VF_ZCR_THRESHOLD      0.10f   /* Zero-crossing rate threshold */
 #define VF_MIN_AMPLITUDE      100.0f  /* Minimum amplitude (not asystole) */
 #define VF_QRS_RATE_THRESHOLD 0.5f    /* QRS per second (below = absent) */
-#define VF_CONFIDENCE_THRESHOLD 0.70f  /* Confidence threshold for VF */
+#define VF_CONFIDENCE_THRESHOLD 0.90f  /* Confidence threshold for VF */
+#define VF_DOMINANCE_THRESHOLD 0.40f  /* Dominant freq must be >40% of band power (was 60%) */
+#define VF_FINE_AMPLITUDE_MAX 200.0f  /* Fine VF has lower amplitude */
+#define VF_FINE_CONFIDENCE    0.70f   /* Lower confidence for fine VF detection */
+#define VF_NOISE_FLOOR_MULT   3.0f    /* VF threshold = noise_floor * this multiplier */
+#define VF_AMPLITUDE_THRESHOLD_RATIO 0.10f  /* 10% of peak for threshold crossings */
 
-/* Goertzel frequencies for VF detection */
-#define VF_NUM_TEST_FREQS     7
-static const float VF_TEST_FREQS[VF_NUM_TEST_FREQS] =
-    {4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f};
+/* Goertzel frequencies for VF detection - 0.5 Hz resolution for better spectral analysis */
+#define VF_NUM_TEST_FREQS     15
+static const float VF_TEST_FREQS[VF_NUM_TEST_FREQS] = {
+    3.5f, 4.0f, 4.5f, 5.0f, 5.5f, 6.0f, 6.5f,
+    7.0f, 7.5f, 8.0f, 8.5f, 9.0f, 9.5f, 10.0f, 10.5f
+};
 
 /* Bandpass filter coefficients (5-18 Hz at 100 Hz sample rate) */
 /* High-pass 5 Hz (2nd order Butterworth) */
@@ -105,6 +112,13 @@ typedef struct {
     float vf_zcr_threshold;        /* zero-crossing rate */
     float vf_confidence_threshold; /* 0.0-1.0 */
     float vf_min_amplitude;        /* minimum amplitude */
+
+    /* Fine VF Detection Parameters (for improved sensitivity) */
+    float vf_dominance_threshold;  /* Freq dominance ratio (0.0-1.0) */
+    float vf_fine_amplitude_max;   /* Max amplitude for fine VF path */
+    float vf_fine_confidence;      /* Lower confidence for fine VF */
+    float vf_noise_floor_mult;     /* Noise floor multiplier for adaptive threshold */
+    float vf_amplitude_thresh_ratio; /* Ratio of peak for threshold crossings */
 } ekg_config_t;
 
 /* Default configuration (used when NULL passed to ekg_analyze) */
@@ -117,7 +131,12 @@ static const ekg_config_t EKG_DEFAULT_CONFIG = {
     .vf_freq_max = VF_FREQ_MAX,
     .vf_zcr_threshold = VF_ZCR_THRESHOLD,
     .vf_confidence_threshold = VF_CONFIDENCE_THRESHOLD,
-    .vf_min_amplitude = VF_MIN_AMPLITUDE
+    .vf_min_amplitude = VF_MIN_AMPLITUDE,
+    .vf_dominance_threshold = VF_DOMINANCE_THRESHOLD,
+    .vf_fine_amplitude_max = VF_FINE_AMPLITUDE_MAX,
+    .vf_fine_confidence = VF_FINE_CONFIDENCE,
+    .vf_noise_floor_mult = VF_NOISE_FLOOR_MULT,
+    .vf_amplitude_thresh_ratio = VF_AMPLITUDE_THRESHOLD_RATIO
 };
 
 #endif /* EKG_CONFIG_H */

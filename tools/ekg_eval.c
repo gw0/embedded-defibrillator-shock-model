@@ -98,16 +98,17 @@ int main(int argc, char *argv[])
 
     /* Evaluate default configuration */
     printf("Evaluating...\n");
-    metrics_t metrics;
+
+    eval_result_t result;
     evaluate_config(&EKG_DEFAULT_CONFIG, &dataset, NULL, dataset.count,
-                   &metrics, source_sample_rate);
+                    &result, source_sample_rate);
 
     /* Print results */
     printf("\n");
     printf("========================================\n");
     printf("EVALUATION RESULTS\n");
     printf("========================================\n");
-    print_metrics(&metrics);
+    print_result(&result);
     printf("========================================\n");
 
     /* Cleanup */

@@ -76,11 +76,16 @@ TEST_SOURCES = tests/test_signal_processing.c
 TEST_TARGET = $(BIN_DIR)/test_signal_processing
 INTEGRATION_TEST_SOURCES = tests/test_ekg_analyzer.c
 INTEGRATION_TEST_TARGET = $(BIN_DIR)/test_ekg_analyzer
+VF_TEST_SOURCES = tests/test_vf_detector.c
+VF_TEST_TARGET = $(BIN_DIR)/test_vf_detector
 
 .PHONY: test
-test: $(TEST_TARGET) $(INTEGRATION_TEST_TARGET)
+test: $(TEST_TARGET) $(INTEGRATION_TEST_TARGET) $(VF_TEST_TARGET)
 	@echo "Running signal processing tests..."
 	@$(TEST_TARGET)
+	@echo ""
+	@echo "Running VF detector tests..."
+	@$(VF_TEST_TARGET)
 	@echo ""
 	@echo "Running integration tests..."
 	@$(INTEGRATION_TEST_TARGET)
@@ -90,6 +95,9 @@ $(TEST_TARGET): $(TEST_SOURCES) $(HOST_OBJECTS) | $(BIN_DIR)
 
 $(INTEGRATION_TEST_TARGET): $(INTEGRATION_TEST_SOURCES) $(HOST_OBJECTS) | $(BIN_DIR)
 	$(HOST_CC) $(HOST_CFLAGS) $(INTEGRATION_TEST_SOURCES) $(HOST_OBJECTS) -o $@ -lm
+
+$(VF_TEST_TARGET): $(VF_TEST_SOURCES) $(HOST_OBJECTS) | $(BIN_DIR)
+	$(HOST_CC) $(HOST_CFLAGS) $(VF_TEST_SOURCES) $(HOST_OBJECTS) -o $@ -lm
 
 # Tools
 TOOLS_DIR = tools

@@ -30,20 +30,28 @@
 /* Parse rhythm type from filename */
 static uint8_t parse_rhythm_type(const char *filename)
 {
-    if (strstr(filename, "VFib") != NULL) {
-        return 3;  /* VF */
-    } else if (strstr(filename, "VTach") != NULL) {
-        return 2;  /* VT */
-    } else if (strstr(filename, "Normal") != NULL) {
-        return 1;  /* Normal */
-    } else if (strstr(filename, "Asystole") != NULL ||
-               strstr(filename, "Afib") != NULL ||
-               strstr(filename, "AFib") != NULL ||
-               strstr(filename, "AFlutter") != NULL ||
-               strstr(filename, "ATach") != NULL) {
-        return 4;  /* Other */
+    if (strstr(filename, "vfib=coarse") != NULL) {
+        return RHYTHM_VF_COARSE;
     }
-    return 4;  /* Default: Other */
+    if (strstr(filename, "vfib=fine") != NULL) {
+        return RHYTHM_VF_FINE;
+    }
+    if (strstr(filename, "nsr=") != NULL) {
+        return RHYTHM_NSR;
+    }
+    if (strstr(filename, "vntwave=") != NULL) {
+        return RHYTHM_VNTWAVE;
+    }
+    if (strstr(filename, "prewave=") != NULL) {
+        return RHYTHM_PREWAVE;
+    }
+    if (strstr(filename, "spvwave=") != NULL) {
+        return RHYTHM_SPVWAVE;
+    }
+    if (strstr(filename, "cndwave=") != NULL) {
+        return RHYTHM_CNDWAVE;
+    }
+    return RHYTHM_UNKNOWN;
 }
 
 /* Scan a directory and add files to dataset */
@@ -88,15 +96,6 @@ static int scan_directory(const char *dir_path, uint8_t shock_label, dataset_t *
 
     closedir(dir);
     return 0;
-}
-
-/* Calculate number of windows that fit in the data */
-static int calculate_num_windows(uint32_t total_samples, int window_size, int step_size)
-{
-    if (total_samples < (uint32_t)window_size) {
-        return 0;
-    }
-    return ((total_samples - window_size) / step_size) + 1;
 }
 
 /* ========================================
@@ -200,18 +199,18 @@ void calculate_metrics(metrics_t *metrics)
     }
 }
 
-/* Evaluate configuration on dataset subset */
+/* Evaluate configuration with per-rhythm breakdown */
 void evaluate_config(const ekg_config_t *config, const dataset_t *dataset,
                     const uint32_t *file_indices, uint32_t num_files,
-                    metrics_t *metrics, uint32_t source_sample_rate)
+                    eval_result_t *result, uint32_t source_sample_rate)
 {
     int16_t *raw_samples = NULL;
     uint32_t num_raw_samples = 0;
     int16_t *samples = NULL;
     uint32_t num_samples = 0;
 
-    /* Reset metrics */
-    memset(metrics, 0, sizeof(metrics_t));
+    /* Reset result */
+    memset(result, 0, sizeof(eval_result_t));
 
     /* Allocate buffers */
     raw_samples = (int16_t *)malloc(MAX_SAMPLES * sizeof(int16_t));
@@ -258,7 +257,7 @@ void evaluate_config(const ekg_config_t *config, const dataset_t *dataset,
         }
 
         /* Calculate number of windows */
-        int num_windows = calculate_num_windows(num_samples, WINDOW_SIZE, WINDOW_STEP);
+        int num_windows = ((num_samples - WINDOW_SIZE) / WINDOW_STEP) + 1;
         if (num_windows == 0) {
             continue;
         }
@@ -290,15 +289,64 @@ void evaluate_config(const ekg_config_t *config, const dataset_t *dataset,
             }
         }
 
-        /* Update confusion matrix based on aggregated file-level result */
+        /* Update overall confusion matrix */
         if (file_shock_advised && file->ground_truth_shock) {
-            metrics->tp++;
+            result->overall.tp++;
         } else if (!file_shock_advised && !file->ground_truth_shock) {
-            metrics->tn++;
+            result->overall.tn++;
         } else if (file_shock_advised && !file->ground_truth_shock) {
-            metrics->fp++;
+            result->overall.fp++;
         } else if (!file_shock_advised && file->ground_truth_shock) {
-            metrics->fn++;
+            result->overall.fn++;
+        }
+
+        /* Update per-rhythm metrics based on rhythm type */
+        metrics_t *rhythm_metric = NULL;
+        uint8_t is_shockable = file->ground_truth_shock;
+
+        switch (file->ground_truth_rhythm) {
+            case RHYTHM_VF_COARSE:
+                rhythm_metric = &result->vf_coarse;
+                break;
+            case RHYTHM_VF_FINE:
+                rhythm_metric = &result->vf_fine;
+                break;
+            case RHYTHM_NSR:
+                rhythm_metric = &result->nsr;
+                break;
+            case RHYTHM_VNTWAVE:
+                rhythm_metric = &result->vntwave;
+                break;
+            case RHYTHM_PREWAVE:
+                rhythm_metric = &result->prewave;
+                break;
+            case RHYTHM_SPVWAVE:
+                rhythm_metric = &result->spvwave;
+                break;
+            case RHYTHM_CNDWAVE:
+                rhythm_metric = &result->cndwave;
+                break;
+            default:
+                /* Unknown rhythm - use other_shockable or other_nonshockable */
+                rhythm_metric = is_shockable ?
+                    &result->other_shockable : &result->other_nonshockable;
+                break;
+        }
+
+        if (is_shockable) {
+            /* Shockable: TP = shock advised, FN = shock not advised */
+            if (file_shock_advised) {
+                rhythm_metric->tp++;
+            } else {
+                rhythm_metric->fn++;
+            }
+        } else {
+            /* Non-shockable: TN = correctly rejected, FP = false alarm */
+            if (!file_shock_advised) {
+                rhythm_metric->tn++;
+            } else {
+                rhythm_metric->fp++;
+            }
         }
     }
 
@@ -308,7 +356,16 @@ void evaluate_config(const ekg_config_t *config, const dataset_t *dataset,
     }
 
     /* Calculate derived metrics */
-    calculate_metrics(metrics);
+    calculate_metrics(&result->overall);
+    calculate_metrics(&result->vf_coarse);
+    calculate_metrics(&result->vf_fine);
+    calculate_metrics(&result->nsr);
+    calculate_metrics(&result->vntwave);
+    calculate_metrics(&result->prewave);
+    calculate_metrics(&result->spvwave);
+    calculate_metrics(&result->cndwave);
+    calculate_metrics(&result->other_shockable);
+    calculate_metrics(&result->other_nonshockable);
 }
 
 /* ========================================
@@ -325,6 +382,73 @@ void print_metrics(const metrics_t *metrics)
     printf("  F1-Score:    %.1f%%\n", metrics->f1_score * 100.0f);
     printf("  Confusion: TP=%u TN=%u FP=%u FN=%u\n",
            metrics->tp, metrics->tn, metrics->fp, metrics->fn);
+}
+
+/* Print evaluation result with per-rhythm breakdown */
+void print_result(const eval_result_t *result)
+{
+    printf("Overall Metrics:\n");
+    print_metrics(&result->overall);
+    printf("\n");
+
+    printf("Per-Rhythm Breakdown (Shockable):\n");
+    if (result->vf_coarse.tp + result->vf_coarse.fn > 0) {
+        printf("  VF Coarse:   Total=%4u  TP=%4u  FN=%4u  Sens=%.1f%%\n",
+               result->vf_coarse.tp + result->vf_coarse.fn,
+               result->vf_coarse.tp, result->vf_coarse.fn,
+               result->vf_coarse.sensitivity * 100.0f);
+    }
+    if (result->vf_fine.tp + result->vf_fine.fn > 0) {
+        printf("  VF Fine:     Total=%4u  TP=%4u  FN=%4u  Sens=%.1f%%\n",
+               result->vf_fine.tp + result->vf_fine.fn,
+               result->vf_fine.tp, result->vf_fine.fn,
+               result->vf_fine.sensitivity * 100.0f);
+    }
+    if (result->other_shockable.tp + result->other_shockable.fn > 0) {
+        printf("  Other Shock: Total=%4u  TP=%4u  FN=%4u  Sens=%.1f%%\n",
+               result->other_shockable.tp + result->other_shockable.fn,
+               result->other_shockable.tp, result->other_shockable.fn,
+               result->other_shockable.sensitivity * 100.0f);
+    }
+    printf("\n");
+
+    printf("Per-Rhythm Breakdown (Non-Shockable):\n");
+    if (result->nsr.tn + result->nsr.fp > 0) {
+        printf("  NSR:         Total=%4u  TN=%4u  FP=%4u  Spec=%.1f%%\n",
+               result->nsr.tn + result->nsr.fp,
+               result->nsr.tn, result->nsr.fp,
+               result->nsr.specificity * 100.0f);
+    }
+    if (result->vntwave.tn + result->vntwave.fp > 0) {
+        printf("  Ventricular: Total=%4u  TN=%4u  FP=%4u  Spec=%.1f%%\n",
+               result->vntwave.tn + result->vntwave.fp,
+               result->vntwave.tn, result->vntwave.fp,
+               result->vntwave.specificity * 100.0f);
+    }
+    if (result->prewave.tn + result->prewave.fp > 0) {
+        printf("  Premature:   Total=%4u  TN=%4u  FP=%4u  Spec=%.1f%%\n",
+               result->prewave.tn + result->prewave.fp,
+               result->prewave.tn, result->prewave.fp,
+               result->prewave.specificity * 100.0f);
+    }
+    if (result->spvwave.tn + result->spvwave.fp > 0) {
+        printf("  Supravent:   Total=%4u  TN=%4u  FP=%4u  Spec=%.1f%%\n",
+               result->spvwave.tn + result->spvwave.fp,
+               result->spvwave.tn, result->spvwave.fp,
+               result->spvwave.specificity * 100.0f);
+    }
+    if (result->cndwave.tn + result->cndwave.fp > 0) {
+        printf("  Conduction:  Total=%4u  TN=%4u  FP=%4u  Spec=%.1f%%\n",
+               result->cndwave.tn + result->cndwave.fp,
+               result->cndwave.tn, result->cndwave.fp,
+               result->cndwave.specificity * 100.0f);
+    }
+    if (result->other_nonshockable.tn + result->other_nonshockable.fp > 0) {
+        printf("  Other:       Total=%4u  TN=%4u  FP=%4u  Spec=%.1f%%\n",
+               result->other_nonshockable.tn + result->other_nonshockable.fp,
+               result->other_nonshockable.tn, result->other_nonshockable.fp,
+               result->other_nonshockable.specificity * 100.0f);
+    }
 }
 
 /* Print configuration parameters */
