@@ -139,4 +139,40 @@ static const ekg_config_t EKG_DEFAULT_CONFIG = {
     .vf_amplitude_thresh_ratio = VF_AMPLITUDE_THRESHOLD_RATIO
 };
 
+/* Log-likelihood ratios for Bayesian confidence calculation */
+/* LR+ when feature present, LR- when absent (in log space) */
+
+/* VF detection log-LRs */
+#define LR_VF_FREQ_BASIC_POS      1.10f   /* freq 3-12 Hz */
+#define LR_VF_FREQ_BASIC_NEG     -1.61f
+#define LR_VF_FREQ_OPTIMAL_POS    1.61f   /* freq 5-8 Hz */
+#define LR_VF_FREQ_OPTIMAL_NEG   -0.69f
+#define LR_VF_ZCR_HIGH_POS        0.92f
+#define LR_VF_ZCR_HIGH_NEG       -0.92f
+#define LR_VF_TCR_HIGH_POS        0.69f
+#define LR_VF_TCR_HIGH_NEG       -0.69f
+#define LR_VF_QRS_ABSENT_POS      1.39f
+#define LR_VF_QRS_ABSENT_NEG     -2.30f
+#define LR_VF_FINE_PENALTY       -0.50f   /* penalty for fine VF */
+
+/* VT detection log-LRs */
+#define LR_VT_HR_THRESH_POS       1.10f
+#define LR_VT_HR_THRESH_NEG      -1.20f
+#define LR_VT_HR_HIGH_POS         0.69f   /* HR > 150 */
+#define LR_VT_HR_HIGH_NEG        -0.36f
+#define LR_VT_QRS_WIDE_POS        1.39f
+#define LR_VT_QRS_WIDE_NEG       -1.61f
+#define LR_VT_QRS_VWIDE_POS       0.92f   /* QRS > 140ms */
+#define LR_VT_QRS_VWIDE_NEG      -0.51f
+#define LR_VT_REGULAR_POS         1.10f
+#define LR_VT_REGULAR_NEG        -0.92f
+#define LR_VT_VREGULAR_POS        0.69f   /* CV < 10% */
+#define LR_VT_VREGULAR_NEG       -0.36f
+#define LR_VT_SUSTAINED_POS       0.92f
+#define LR_VT_SUSTAINED_NEG      -0.69f
+
+/* Signal quality */
+#define SNR_GOOD_THRESHOLD       10.0f
+#define SIGNAL_QUALITY_MIN        0.5f
+
 #endif /* EKG_CONFIG_H */

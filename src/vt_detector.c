@@ -9,6 +9,7 @@
 #include "vt_detector.h"
 #include "ekg_config.h"
 #include "heart_rate.h"
+#include "signal_utils.h"
 #include <stddef.h>
 #include <string.h>
 #include <math.h>
@@ -206,53 +207,34 @@ int detect_vt(const float *filtered, const float *raw, uint16_t num_samples,
     /* Verify duration: consecutive wide QRS must span >= 2 seconds */
     uint8_t duration_met = (max_run_duration_samples >= VT_DURATION_SAMPLES) ? 1 : 0;
 
-    /*
-     * VT Decision Logic with scoring:
-     * - Heart rate criterion (0-0.4)
-     * - QRS width criterion (0-0.4)
-     * - Regularity criterion (0-0.3)
-     * - Sustained criterion (0-0.2)
-     */
+    /* Calculate confidence using log-odds (Bayesian approach) */
+    float log_odds = 0.0f;  /* Prior: 50% */
 
-    float vt_score = 0.0f;
+    /* Heart rate contribution */
+    log_odds += (heart_rate > config->vt_hr_threshold) ? LR_VT_HR_THRESH_POS : LR_VT_HR_THRESH_NEG;
+    log_odds += (heart_rate > 150.0f) ? LR_VT_HR_HIGH_POS : LR_VT_HR_HIGH_NEG;
 
-    /* Criterion 1: Heart rate */
-    if (heart_rate > config->vt_hr_threshold) {
-        vt_score += 0.3f;
-    }
-    if (heart_rate > 150.0f) {
-        vt_score += 0.1f;
-    }
+    /* QRS width contribution */
+    log_odds += (mean_qrs_width > config->vt_qrs_width_ms) ? LR_VT_QRS_WIDE_POS : LR_VT_QRS_WIDE_NEG;
+    log_odds += (mean_qrs_width > 140.0f) ? LR_VT_QRS_VWIDE_POS : LR_VT_QRS_VWIDE_NEG;
 
-    /* Criterion 2: QRS width */
-    if (mean_qrs_width > config->vt_qrs_width_ms) {
-        vt_score += 0.3f;
-    }
-    if (mean_qrs_width > 140.0f) {
-        vt_score += 0.1f;
-    }
+    /* Regularity contribution */
+    log_odds += (rr_cv < config->vt_regularity_cv) ? LR_VT_REGULAR_POS : LR_VT_REGULAR_NEG;
+    log_odds += (rr_cv < 10.0f) ? LR_VT_VREGULAR_POS : LR_VT_VREGULAR_NEG;
 
-    /* Criterion 3: Regularity */
-    if (rr_cv < config->vt_regularity_cv) {
-        vt_score += 0.2f;
-    }
-    if (rr_cv < 10.0f) {
-        vt_score += 0.1f;
-    }
+    /* Sustained duration contribution */
+    log_odds += (max_consecutive >= VT_MIN_CONSECUTIVE && duration_met) ? LR_VT_SUSTAINED_POS : LR_VT_SUSTAINED_NEG;
 
-    /* Criterion 4: Sustained (≥3 consecutive wide QRS spanning ≥2 seconds) */
-    if (max_consecutive >= VT_MIN_CONSECUTIVE && duration_met) {
-        vt_score += 0.2f;
-    }
+    /* Convert to probability */
+    float confidence = log_odds_to_probability(log_odds);
 
-    /* VT detected if score >= threshold AND duration requirement met */
-    if (vt_score >= config->vt_confidence_threshold && duration_met) {
+    /* VT detected if confidence >= threshold AND duration requirement met */
+    if (confidence >= config->vt_confidence_threshold && duration_met) {
         result->vt_detected = 1;
-        result->confidence = vt_score;
     } else {
         result->vt_detected = 0;
-        result->confidence = vt_score;
     }
+    result->confidence = confidence;
 
     return EKG_SUCCESS;
 }

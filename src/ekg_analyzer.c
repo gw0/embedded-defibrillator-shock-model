@@ -119,7 +119,7 @@ int ekg_analyze(const int16_t *samples,
         /* VF detected */
         result->shock_advised = 1;
         result->rhythm_type = 3;  /* VF */
-        result->confidence = (uint8_t)(vf_result.confidence * 100.0f);
+        result->confidence = (uint8_t)(vf_result.confidence * 100.0f + 0.5f);
         result->dominant_freq = vf_result.dominant_freq;
         result->heart_rate = 0;  /* Cannot measure in VF */
         result->num_qrs_detected = qrs_result.count;
@@ -128,7 +128,7 @@ int ekg_analyze(const int16_t *samples,
         /* VT detected */
         result->shock_advised = 1;
         result->rhythm_type = 2;  /* VT */
-        result->confidence = (uint8_t)(vt_result.confidence * 100.0f);
+        result->confidence = (uint8_t)(vt_result.confidence * 100.0f + 0.5f);
         result->heart_rate = (uint16_t)vt_result.heart_rate;
         result->dominant_freq = 0.0f;
         result->num_qrs_detected = qrs_result.count;

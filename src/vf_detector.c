@@ -8,6 +8,7 @@
 
 #include "vf_detector.h"
 #include "ekg_config.h"
+#include "signal_utils.h"
 #include <stddef.h>
 #include <string.h>
 #include <math.h>
@@ -365,30 +366,30 @@ int detect_vf(const float *signal, uint16_t num_samples,
             result->vf_detected = 1;
             result->is_fine_vf = 0;
 
-            /* Calculate confidence based on how well criteria are met */
-            float confidence = 0.5f;
+            /* Calculate confidence using log-odds (Bayesian approach) */
+            float log_odds = 0.0f;  /* Prior: 50% */
 
-            /* Bonus for typical VF frequency (5-8 Hz) */
+            /* Frequency criterion contribution */
             if (dominant_freq >= 5.0f && dominant_freq <= 8.0f) {
-                confidence += 0.2f;
+                log_odds += LR_VF_FREQ_OPTIMAL_POS;
+            } else if (dominant_freq >= config->vf_freq_min && dominant_freq <= config->vf_freq_max) {
+                log_odds += LR_VF_FREQ_BASIC_POS;
+            } else {
+                log_odds += LR_VF_FREQ_BASIC_NEG;
             }
 
-            /* Bonus for high zero-crossing rate */
-            if (zcr > config->vf_zcr_threshold) {
-                confidence += 0.1f;
-            }
+            /* ZCR contribution */
+            log_odds += (zcr > config->vf_zcr_threshold) ? LR_VF_ZCR_HIGH_POS : LR_VF_ZCR_HIGH_NEG;
 
-            /* Bonus for high threshold crossing rate */
-            if (tcr > config->vf_zcr_threshold * 2.0f) {
-                confidence += 0.1f;
-            }
+            /* TCR contribution */
+            log_odds += (tcr > config->vf_zcr_threshold * 2.0f) ? LR_VF_TCR_HIGH_POS : LR_VF_TCR_HIGH_NEG;
 
-            /* Bonus for QRS absence */
-            if (qrs_absent == 1) {
-                confidence += 0.1f;
-            }
+            /* QRS absence contribution */
+            log_odds += (qrs_absent == 1) ? LR_VF_QRS_ABSENT_POS : LR_VF_QRS_ABSENT_NEG;
 
-            result->confidence = (confidence > 1.0f) ? 1.0f : confidence;
+            /* Convert to probability and scale by signal quality */
+            float signal_quality = estimate_signal_quality(signal, num_samples, (float)sample_rate);
+            result->confidence = log_odds_to_probability(log_odds) * signal_quality;
             return EKG_SUCCESS;
         }
     }
@@ -428,15 +429,22 @@ int detect_vf(const float *signal, uint16_t num_samples,
             result->is_fine_vf = 1;
             result->dominant_freq = fine_vf_freq;
 
-            /* Fine VF gets lower confidence */
-            float confidence = config->vf_fine_confidence;
+            /* Fine VF: log-odds calculation with penalty */
+            float log_odds = 0.0f;  /* Prior: 50% */
 
-            /* Small bonus for being clearly in VF frequency range */
+            /* Frequency contribution */
             if (fine_vf_freq >= 5.0f && fine_vf_freq <= 8.0f) {
-                confidence += 0.1f;
+                log_odds += LR_VF_FREQ_OPTIMAL_POS;
+            } else {
+                log_odds += LR_VF_FREQ_BASIC_POS;
             }
 
-            result->confidence = (confidence > 0.95f) ? 0.95f : confidence;
+            /* Fine VF penalty (lower certainty due to low amplitude) */
+            log_odds += LR_VF_FINE_PENALTY;
+
+            /* Convert to probability and scale by signal quality */
+            float signal_quality = estimate_signal_quality(signal, num_samples, (float)sample_rate);
+            result->confidence = log_odds_to_probability(log_odds) * signal_quality;
             return EKG_SUCCESS;
         }
     }
