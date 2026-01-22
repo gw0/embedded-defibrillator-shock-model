@@ -292,16 +292,22 @@ crossing_result_t calculate_threshold_crossing_rate(const float *signal, uint16_
 }
 
 uint8_t check_organized_tachycardia(const qrs_detection_result_t *qrs_result,
-                                     uint16_t sample_rate)
+                                     uint16_t sample_rate,
+                                     const ekg_config_t *config)
 {
     if (qrs_result == NULL || qrs_result->count < 4 || qrs_result->locations == NULL) {
         return 0;  /* Need at least 4 QRS with valid locations to assess regularity */
     }
 
+    /* Use default config if NULL */
+    if (config == NULL) {
+        config = &EKG_DEFAULT_CONFIG;
+    }
+
     /*
      * SVT/Organized tachycardia characteristics:
-     * 1. Heart rate 120-220 bpm
-     * 2. Regular RR intervals (CV < 15%)
+     * 1. Heart rate in configurable tachycardia range (default: 120-220 bpm)
+     * 2. Regular RR intervals (CV < configurable threshold, default: 15%)
      *
      * VF should NOT be detected when these conditions are met.
      */
@@ -322,8 +328,8 @@ uint8_t check_organized_tachycardia(const qrs_detection_result_t *qrs_result,
     /* Calculate heart rate */
     float heart_rate = 60.0f / mean_rr;
 
-    /* Must be in tachycardia range (120-220 bpm) */
-    if (heart_rate < 120.0f || heart_rate > 220.0f) {
+    /* Must be in tachycardia range (configurable) */
+    if (heart_rate < config->vf_org_hr_min || heart_rate > config->vf_org_hr_max) {
         return 0;
     }
 
@@ -336,8 +342,8 @@ uint8_t check_organized_tachycardia(const qrs_detection_result_t *qrs_result,
     float std_dev = sqrtf(sum_sq_diff / (float)num_intervals);
     float cv = (std_dev / mean_rr) * 100.0f;  /* Percent */
 
-    /* If CV < 15%, rhythm is organized (likely SVT, not VF) */
-    return (cv < 15.0f) ? 1 : 0;
+    /* If CV < threshold, rhythm is organized (likely SVT, not VF) */
+    return (cv < config->vf_org_cv_thresh) ? 1 : 0;
 }
 
 entropy_result_t calculate_spectral_entropy(const float *signal, uint16_t num_samples,
@@ -505,7 +511,7 @@ int detect_vf(const float *signal, uint16_t num_samples,
      * Check for organized tachycardia (SVT discrimination)
      * If rhythm is regular with tachycardia, it's likely SVT not VF
      */
-    uint8_t is_organized_tachy = check_organized_tachycardia(qrs_result, sample_rate);
+    uint8_t is_organized_tachy = check_organized_tachycardia(qrs_result, sample_rate, config);
 
     /* Calculate spectral entropy for VF/organized rhythm discrimination */
     entropy_result_t ent = calculate_spectral_entropy(signal, num_samples, sample_rate);
@@ -522,13 +528,13 @@ int detect_vf(const float *signal, uint16_t num_samples,
     float evidence_score = 0.0f;
 
     /* Amplitude contribution (soft threshold) - amplitude is directly measurable, high confidence */
-    if (amplitude > 300.0f) {
+    if (amplitude > config->vf_amp_high_thresh) {
         evidence_score += VF_EV_AMP_HIGH;
-    } else if (amplitude > 200.0f) {
+    } else if (amplitude > config->vf_amp_medium_thresh) {
         evidence_score += VF_EV_AMP_MEDIUM;
-    } else if (amplitude > 100.0f) {
+    } else if (amplitude > config->vf_amp_low_thresh) {
         evidence_score += VF_EV_AMP_LOW;
-    } else if (amplitude > 50.0f) {
+    } else if (amplitude > config->vf_amp_vlow_thresh) {
         evidence_score += VF_EV_AMP_VLOW;
     }
 
@@ -545,23 +551,23 @@ int detect_vf(const float *signal, uint16_t num_samples,
     /* Irregularity contribution - weighted by crossing rate confidence */
     if (qrs_absent) {
         evidence_score += VF_EV_QRS_ABSENT;
-    } else if (zcr > 0.25f || tcr.rate > 0.5f) {
+    } else if (zcr > config->vf_zcr_high_thresh || tcr.rate > config->vf_tcr_high_thresh) {
         evidence_score += VF_EV_HIGH_IRREG * tcr.confidence;
-    } else if (zcr > 0.15f || tcr.rate > 0.3f) {
+    } else if (zcr > config->vf_zcr_mod_thresh || tcr.rate > config->vf_tcr_mod_thresh) {
         evidence_score += VF_EV_MOD_IRREG * tcr.confidence;
     }
 
     /* Entropy contribution - weighted by measurement confidence */
-    if (ent.entropy > 0.6f) {
+    if (ent.entropy > config->vf_entropy_high_thresh) {
         evidence_score += VF_EV_ENTROPY_HIGH * ent.confidence;
-    } else if (ent.entropy > 0.4f) {
+    } else if (ent.entropy > config->vf_entropy_mod_thresh) {
         evidence_score += VF_EV_ENTROPY_MOD * ent.confidence;
     }
 
     /* Organized rhythm penalties (not scaled - penalties are definitive) */
     if (is_organized_tachy) {
         evidence_score += VF_EV_ORGANIZED_PENALTY;
-    } else if (qrs_rate > 0.8f) {
+    } else if (qrs_rate > config->vf_qrs_rate_penalty_thresh) {
         evidence_score += VF_EV_QRS_PRESENT_PENALTY;
     }
 

@@ -212,15 +212,15 @@ int detect_vt(const float *filtered, const float *raw, uint16_t num_samples,
 
     /* Heart rate contribution */
     log_odds += (heart_rate > config->vt_hr_threshold) ? LR_VT_HR_THRESH_POS : LR_VT_HR_THRESH_NEG;
-    log_odds += (heart_rate > 150.0f) ? LR_VT_HR_HIGH_POS : LR_VT_HR_HIGH_NEG;
+    log_odds += (heart_rate > config->vt_hr_high_thresh) ? LR_VT_HR_HIGH_POS : LR_VT_HR_HIGH_NEG;
 
     /* QRS width contribution */
     log_odds += (mean_qrs_width > config->vt_qrs_width_ms) ? LR_VT_QRS_WIDE_POS : LR_VT_QRS_WIDE_NEG;
-    log_odds += (mean_qrs_width > 140.0f) ? LR_VT_QRS_VWIDE_POS : LR_VT_QRS_VWIDE_NEG;
+    log_odds += (mean_qrs_width > config->vt_qrs_vwide_thresh) ? LR_VT_QRS_VWIDE_POS : LR_VT_QRS_VWIDE_NEG;
 
     /* Regularity contribution */
     log_odds += (rr_cv < config->vt_regularity_cv) ? LR_VT_REGULAR_POS : LR_VT_REGULAR_NEG;
-    log_odds += (rr_cv < 10.0f) ? LR_VT_VREGULAR_POS : LR_VT_VREGULAR_NEG;
+    log_odds += (rr_cv < config->vt_vregular_cv_thresh) ? LR_VT_VREGULAR_POS : LR_VT_VREGULAR_NEG;
 
     /* Sustained duration contribution */
     log_odds += (max_consecutive >= VT_MIN_CONSECUTIVE && duration_met) ? LR_VT_SUSTAINED_POS : LR_VT_SUSTAINED_NEG;

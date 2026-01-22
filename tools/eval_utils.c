@@ -504,6 +504,29 @@ void print_config_params(const ekg_config_t *config)
     printf("  VF_NOISE_FLOOR_MULT:  %.1f\n", config->vf_noise_floor_mult);
     printf("  VF_AMP_THRESH_RATIO:  %.2f\n", config->vf_amplitude_thresh_ratio);
     printf("  VF_EVIDENCE_THRESH:   %.1f\n", config->vf_evidence_threshold);
+    /* Evidence Amplitude Thresholds */
+    printf("  VF_AMP_HIGH_THRESH:   %.1f\n", config->vf_amp_high_thresh);
+    printf("  VF_AMP_MEDIUM_THRESH: %.1f\n", config->vf_amp_medium_thresh);
+    printf("  VF_AMP_LOW_THRESH:    %.1f\n", config->vf_amp_low_thresh);
+    printf("  VF_AMP_VLOW_THRESH:   %.1f\n", config->vf_amp_vlow_thresh);
+    /* Irregularity Thresholds */
+    printf("  VF_ZCR_HIGH_THRESH:   %.2f\n", config->vf_zcr_high_thresh);
+    printf("  VF_ZCR_MOD_THRESH:    %.2f\n", config->vf_zcr_mod_thresh);
+    printf("  VF_TCR_HIGH_THRESH:   %.2f\n", config->vf_tcr_high_thresh);
+    printf("  VF_TCR_MOD_THRESH:    %.2f\n", config->vf_tcr_mod_thresh);
+    /* Entropy Thresholds */
+    printf("  VF_ENTROPY_HIGH:      %.2f\n", config->vf_entropy_high_thresh);
+    printf("  VF_ENTROPY_MOD:       %.2f\n", config->vf_entropy_mod_thresh);
+    /* Organized Rhythm Detection */
+    printf("  VF_ORG_HR_MIN:        %.1f bpm\n", config->vf_org_hr_min);
+    printf("  VF_ORG_HR_MAX:        %.1f bpm\n", config->vf_org_hr_max);
+    printf("  VF_ORG_CV_THRESH:     %.1f%%\n", config->vf_org_cv_thresh);
+    /* QRS Rate Penalty */
+    printf("  VF_QRS_RATE_PENALTY:  %.2f\n", config->vf_qrs_rate_penalty_thresh);
+    /* VT Bayesian Boundaries */
+    printf("  VT_HR_HIGH_THRESH:    %.1f bpm\n", config->vt_hr_high_thresh);
+    printf("  VT_QRS_VWIDE_THRESH:  %.1f ms\n", config->vt_qrs_vwide_thresh);
+    printf("  VT_VREGULAR_CV:       %.1f%%\n", config->vt_vregular_cv_thresh);
 }
 
 /* ========================================

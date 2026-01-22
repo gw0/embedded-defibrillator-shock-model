@@ -151,10 +151,12 @@ crossing_result_t calculate_threshold_crossing_rate(const float *signal, uint16_
  *
  * @param qrs_result   QRS detection results
  * @param sample_rate  Sample rate in Hz
+ * @param config       Configuration parameters (NULL = use defaults)
  * @return             1 if organized tachycardia detected, 0 otherwise
  */
 uint8_t check_organized_tachycardia(const qrs_detection_result_t *qrs_result,
-                                     uint16_t sample_rate);
+                                     uint16_t sample_rate,
+                                     const ekg_config_t *config);
 
 /**
  * Calculate spectral entropy for rhythm characterization

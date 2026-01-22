@@ -265,7 +265,7 @@ void test_helper_functions(void)
     qrs_regular.count = 6;
     uint16_t regular_locations[6] = {50, 100, 150, 200, 250, 300};  /* 120 bpm, very regular */
     qrs_regular.locations = regular_locations;
-    uint8_t is_organized = check_organized_tachycardia(&qrs_regular, EKG_SAMPLE_RATE);
+    uint8_t is_organized = check_organized_tachycardia(&qrs_regular, EKG_SAMPLE_RATE, NULL);
     run_test("Regular tachycardia detected as organized", is_organized == 1);
     printf("  Organized tachycardia (regular): %s\n", is_organized ? "yes" : "no");
 
@@ -275,7 +275,7 @@ void test_helper_functions(void)
     qrs_irregular.count = 2;  /* Too few QRS for assessment */
     uint16_t irregular_locations[2] = {50, 200};
     qrs_irregular.locations = irregular_locations;
-    uint8_t is_organized_irreg = check_organized_tachycardia(&qrs_irregular, EKG_SAMPLE_RATE);
+    uint8_t is_organized_irreg = check_organized_tachycardia(&qrs_irregular, EKG_SAMPLE_RATE, NULL);
     run_test("Irregular/sparse QRS not detected as organized", is_organized_irreg == 0);
     printf("  Organized tachycardia (irregular): %s\n", is_organized_irreg ? "yes" : "no");
 }

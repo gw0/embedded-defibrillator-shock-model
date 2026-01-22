@@ -35,13 +35,13 @@
 
 /* Parameter grid */
 typedef struct {
+    /* Original parameters */
     float *vt_hr_values;      uint32_t vt_hr_count;
     float *vt_qrs_values;     uint32_t vt_qrs_count;
     float *vt_reg_values;     uint32_t vt_reg_count;
     float *vt_conf_values;    uint32_t vt_conf_count;
     float *vf_fmin_values;    uint32_t vf_fmin_count;
     float *vf_fmax_values;    uint32_t vf_fmax_count;
-    float *vf_zcr_values;     uint32_t vf_zcr_count;
     float *vf_conf_values;    uint32_t vf_conf_count;
     float *vf_min_amp_values;       uint32_t vf_min_amp_count;
     float *vf_dominance_values;     uint32_t vf_dominance_count;
@@ -49,7 +49,36 @@ typedef struct {
     float *vf_fine_conf_values;     uint32_t vf_fine_conf_count;
     float *vf_noise_mult_values;    uint32_t vf_noise_mult_count;
     float *vf_amp_ratio_values;     uint32_t vf_amp_ratio_count;
-    float *vf_evidence_values;      uint32_t vf_evidence_count;  /* Evidence scoring threshold */
+    float *vf_evidence_values;      uint32_t vf_evidence_count;
+
+    /* New VF Evidence Amplitude Thresholds */
+    float *vf_amp_high_thresh_values;    uint32_t vf_amp_high_thresh_count;
+    float *vf_amp_medium_thresh_values;  uint32_t vf_amp_medium_thresh_count;
+    float *vf_amp_low_thresh_values;     uint32_t vf_amp_low_thresh_count;
+    float *vf_amp_vlow_thresh_values;    uint32_t vf_amp_vlow_thresh_count;
+
+    /* New Irregularity Thresholds */
+    float *vf_zcr_high_thresh_values;    uint32_t vf_zcr_high_thresh_count;
+    float *vf_zcr_mod_thresh_values;     uint32_t vf_zcr_mod_thresh_count;
+    float *vf_tcr_high_thresh_values;    uint32_t vf_tcr_high_thresh_count;
+    float *vf_tcr_mod_thresh_values;     uint32_t vf_tcr_mod_thresh_count;
+
+    /* New Entropy Thresholds */
+    float *vf_entropy_high_thresh_values;  uint32_t vf_entropy_high_thresh_count;
+    float *vf_entropy_mod_thresh_values;   uint32_t vf_entropy_mod_thresh_count;
+
+    /* New Organized Rhythm Detection */
+    float *vf_org_hr_min_values;    uint32_t vf_org_hr_min_count;
+    float *vf_org_hr_max_values;    uint32_t vf_org_hr_max_count;
+    float *vf_org_cv_thresh_values; uint32_t vf_org_cv_thresh_count;
+
+    /* New QRS Rate Penalty */
+    float *vf_qrs_rate_penalty_thresh_values;  uint32_t vf_qrs_rate_penalty_thresh_count;
+
+    /* New VT Bayesian Boundaries */
+    float *vt_hr_high_thresh_values;     uint32_t vt_hr_high_thresh_count;
+    float *vt_qrs_vwide_thresh_values;   uint32_t vt_qrs_vwide_thresh_count;
+    float *vt_vregular_cv_thresh_values; uint32_t vt_vregular_cv_thresh_count;
 } param_grid_t;
 
 /* Progress tracker */
@@ -77,12 +106,11 @@ static void search_random(const param_grid_t *grid, const dataset_t *dataset,
                          uint32_t num_samples, progress_t *progress, uint32_t source_sample_rate);
 static void search_local(const param_grid_t *grid, const dataset_t *dataset,
                         uint32_t num_samples, progress_t *progress, uint32_t source_sample_rate);
-static void search_exhaustive(const param_grid_t *grid, const dataset_t *dataset,
-                              progress_t *progress, uint32_t source_sample_rate);
 static void search_adaptive(const param_grid_t *grid, const dataset_t *dataset,
                            uint32_t num_combinations, progress_t *progress, uint32_t source_sample_rate);
 
 /* Output generation */
+static void write_result_csv(FILE *f, const ekg_config_t *config, const metrics_t *metrics);
 static int write_best_config_header(const char *filename, const ekg_config_t *config,
                                     const metrics_t *metrics);
 
@@ -184,16 +212,12 @@ int main(int argc, char *argv[])
     /* Open CSV output file */
     progress.csv_file = fopen(output_file, "w");
     if (progress.csv_file != NULL) {
-        fprintf(progress.csv_file, "vt_hr,vt_qrs,vt_reg,vt_conf,vf_min,vf_max,vf_zcr,vf_conf,"
+        fprintf(progress.csv_file, "vt_hr,vt_qrs,vt_reg,vt_conf,vf_min,vf_max,vf_conf,"
                 "vf_min_amp,vf_dominance,vf_fine_amp_max,vf_fine_conf,vf_noise_mult,vf_amp_ratio,vf_evidence,"
                 "accuracy,sensitivity,specificity,precision,f1,tp,tn,fp,fn\n");
     }
 
-    if (strcmp(strategy, "exhaustive") == 0) {
-        progress.total_combinations = grid_size(&grid);
-        printf("Starting exhaustive search (%lu combinations)...\n", progress.total_combinations);
-        search_exhaustive(&grid, &dataset, &progress, source_sample_rate);
-    } else if (strcmp(strategy, "adaptive") == 0) {
+    if (strcmp(strategy, "adaptive") == 0) {
         printf("Starting adaptive search...\n");
         search_adaptive(&grid, &dataset, num_combinations, &progress, source_sample_rate);
     } else if (strcmp(strategy, "local") == 0) {
@@ -233,21 +257,7 @@ int main(int argc, char *argv[])
     printf("\n========================================\n");
     printf("BEST CONFIGURATION FOUND\n");
     printf("========================================\n");
-    printf("VT_HR_THRESHOLD: %.1f bpm\n", progress.best_config.vt_hr_threshold);
-    printf("VT_QRS_WIDTH_MS: %.1f ms\n", progress.best_config.vt_qrs_width_ms);
-    printf("VT_REGULARITY_CV: %.1f%%\n", progress.best_config.vt_regularity_cv);
-    printf("VT_CONFIDENCE_THRESHOLD: %.2f\n", progress.best_config.vt_confidence_threshold);
-    printf("VF_FREQ_MIN: %.1f Hz\n", progress.best_config.vf_freq_min);
-    printf("VF_FREQ_MAX: %.1f Hz\n", progress.best_config.vf_freq_max);
-    printf("VF_ZCR_THRESHOLD: %.2f\n", progress.best_config.vf_zcr_threshold);
-    printf("VF_CONFIDENCE_THRESHOLD: %.2f\n", progress.best_config.vf_confidence_threshold);
-    printf("VF_MIN_AMPLITUDE: %.1f\n", progress.best_config.vf_min_amplitude);
-    printf("VF_DOMINANCE_THRESHOLD: %.2f\n", progress.best_config.vf_dominance_threshold);
-    printf("VF_FINE_AMPLITUDE_MAX: %.1f\n", progress.best_config.vf_fine_amplitude_max);
-    printf("VF_FINE_CONFIDENCE: %.2f\n", progress.best_config.vf_fine_confidence);
-    printf("VF_NOISE_FLOOR_MULT: %.1f\n", progress.best_config.vf_noise_floor_mult);
-    printf("VF_AMPLITUDE_THRESH_RATIO: %.2f\n", progress.best_config.vf_amplitude_thresh_ratio);
-    printf("VF_EVIDENCE_THRESHOLD: %.1f\n", progress.best_config.vf_evidence_threshold);
+    print_config_params(&progress.best_config);
     printf("\n");
 
     printf("PERFORMANCE METRICS:\n");
@@ -273,122 +283,235 @@ int main(int argc, char *argv[])
 /* Initialize default parameter grid */
 static void init_default_grid(param_grid_t *grid)
 {
-    /* VT_HR_THRESHOLD: 100-140 step 5 (9 values) */
-    grid->vt_hr_count = 9;
+    /*
+     * STABLE PARAMETERS (1 value - no tuning needed based on analysis)
+     * These parameters consistently stayed at default across optimization runs.
+     */
+
+    /* VT_HR_THRESHOLD: stable at 120.0 (clinical standard) */
+    grid->vt_hr_count = 1;
     grid->vt_hr_values = malloc(grid->vt_hr_count * sizeof(float));
-    for (uint32_t i = 0; i < grid->vt_hr_count; i++) {
-        grid->vt_hr_values[i] = 100.0f + i * 5.0f;
-    }
+    grid->vt_hr_values[0] = 120.0f;
 
-    /* VT_QRS_WIDTH_MS: 100-140 step 10 (5 values) */
-    grid->vt_qrs_count = 5;
+    /* VT_QRS_WIDTH_MS: stable at 100.0 (clinical standard) */
+    grid->vt_qrs_count = 1;
     grid->vt_qrs_values = malloc(grid->vt_qrs_count * sizeof(float));
-    for (uint32_t i = 0; i < grid->vt_qrs_count; i++) {
-        grid->vt_qrs_values[i] = 100.0f + i * 10.0f;
-    }
+    grid->vt_qrs_values[0] = 100.0f;
 
-    /* VT_REGULARITY_CV: 15-30 step 5 (4 values) */
+    /* VT_CONFIDENCE_THRESHOLD: stable at 0.70 */
+    grid->vt_conf_count = 1;
+    grid->vt_conf_values = malloc(grid->vt_conf_count * sizeof(float));
+    grid->vt_conf_values[0] = 0.70f;
+
+    /* VF_FREQ_MAX: stable at 9.5 */
+    grid->vf_fmax_count = 1;
+    grid->vf_fmax_values = malloc(grid->vf_fmax_count * sizeof(float));
+    grid->vf_fmax_values[0] = 9.5f;
+
+    /* VF_MIN_AMPLITUDE: stable at 200.0 */
+    grid->vf_min_amp_count = 1;
+    grid->vf_min_amp_values = malloc(grid->vf_min_amp_count * sizeof(float));
+    grid->vf_min_amp_values[0] = 200.0f;
+
+    /* VF_FINE_CONFIDENCE: stable at 0.60 */
+    grid->vf_fine_conf_count = 1;
+    grid->vf_fine_conf_values = malloc(grid->vf_fine_conf_count * sizeof(float));
+    grid->vf_fine_conf_values[0] = 0.60f;
+
+    /* VF_AMPLITUDE_THRESH_RATIO: stable at 0.05 */
+    grid->vf_amp_ratio_count = 1;
+    grid->vf_amp_ratio_values = malloc(grid->vf_amp_ratio_count * sizeof(float));
+    grid->vf_amp_ratio_values[0] = 0.05f;
+
+    /* VF_EVIDENCE_THRESHOLD: stable at 3.0 */
+    grid->vf_evidence_count = 1;
+    grid->vf_evidence_values = malloc(grid->vf_evidence_count * sizeof(float));
+    grid->vf_evidence_values[0] = 3.0f;
+
+    /*
+     * ACTIVE PARAMETERS (multiple values - these influence performance)
+     */
+
+    /* VT_REGULARITY_CV: 15-30 step 5 (4 values) - changed in optimization */
     grid->vt_reg_count = 4;
     grid->vt_reg_values = malloc(grid->vt_reg_count * sizeof(float));
     for (uint32_t i = 0; i < grid->vt_reg_count; i++) {
         grid->vt_reg_values[i] = 15.0f + i * 5.0f;
     }
 
-    /* VT_CONFIDENCE_THRESHOLD: 0.5-0.9 step 0.1 (5 values) */
-    grid->vt_conf_count = 5;
-    grid->vt_conf_values = malloc(grid->vt_conf_count * sizeof(float));
-    for (uint32_t i = 0; i < grid->vt_conf_count; i++) {
-        grid->vt_conf_values[i] = 0.5f + i * 0.1f;
-    }
-
-    /* VF_FREQ_MIN: 2.5-5.0 step 0.5 (6 values) - extended for slow VF */
+    /* VF_FREQ_MIN: 2.5-5.0 step 0.5 (6 values) - changed in optimization */
     grid->vf_fmin_count = 6;
     grid->vf_fmin_values = malloc(grid->vf_fmin_count * sizeof(float));
     for (uint32_t i = 0; i < grid->vf_fmin_count; i++) {
         grid->vf_fmin_values[i] = 2.5f + i * 0.5f;
     }
 
-    /* VF_FREQ_MAX: 9.0-12.0 step 0.5 (7 values) */
-    grid->vf_fmax_count = 7;
-    grid->vf_fmax_values = malloc(grid->vf_fmax_count * sizeof(float));
-    for (uint32_t i = 0; i < grid->vf_fmax_count; i++) {
-        grid->vf_fmax_values[i] = 9.0f + i * 0.5f;
-    }
-
-    /* VF_ZCR_THRESHOLD: 0.05-0.25 step 0.05 (5 values) - extended lower range */
-    grid->vf_zcr_count = 5;
-    grid->vf_zcr_values = malloc(grid->vf_zcr_count * sizeof(float));
-    for (uint32_t i = 0; i < grid->vf_zcr_count; i++) {
-        grid->vf_zcr_values[i] = 0.05f + i * 0.05f;
-    }
-
-    /* VF_CONFIDENCE_THRESHOLD: 0.50-0.95 step 0.1 (6 values) - extended upper range */
-    grid->vf_conf_count = 6;
+    /* VF_CONFIDENCE_THRESHOLD: 0.50-0.95 step 0.05 (10 values) - PRIMARY driver */
+    grid->vf_conf_count = 10;
     grid->vf_conf_values = malloc(grid->vf_conf_count * sizeof(float));
     for (uint32_t i = 0; i < grid->vf_conf_count; i++) {
-        grid->vf_conf_values[i] = 0.50f + i * 0.09f;
+        grid->vf_conf_values[i] = 0.50f + i * 0.05f;
     }
 
-    /* VF_MIN_AMPLITUDE: 50-200 step 50 (4 values) */
-    grid->vf_min_amp_count = 4;
-    grid->vf_min_amp_values = malloc(grid->vf_min_amp_count * sizeof(float));
-    for (uint32_t i = 0; i < grid->vf_min_amp_count; i++) {
-        grid->vf_min_amp_values[i] = 50.0f + i * 50.0f;
-    }
-
-    /* VF_DOMINANCE_THRESHOLD: 0.30-0.50 step 0.05 (5 values) */
+    /* VF_DOMINANCE_THRESHOLD: 0.30-0.50 step 0.05 (5 values) - changed in optimization */
     grid->vf_dominance_count = 5;
     grid->vf_dominance_values = malloc(grid->vf_dominance_count * sizeof(float));
     for (uint32_t i = 0; i < grid->vf_dominance_count; i++) {
         grid->vf_dominance_values[i] = 0.30f + i * 0.05f;
     }
 
-    /* VF_FINE_AMPLITUDE_MAX: 150-300 step 50 (4 values) */
+    /* VF_FINE_AMPLITUDE_MAX: 150-300 step 50 (4 values) - changed in optimization */
     grid->vf_fine_amp_max_count = 4;
     grid->vf_fine_amp_max_values = malloc(grid->vf_fine_amp_max_count * sizeof(float));
     for (uint32_t i = 0; i < grid->vf_fine_amp_max_count; i++) {
         grid->vf_fine_amp_max_values[i] = 150.0f + i * 50.0f;
     }
 
-    /* VF_FINE_CONFIDENCE: 0.60-0.80 step 0.05 (5 values) */
-    grid->vf_fine_conf_count = 5;
-    grid->vf_fine_conf_values = malloc(grid->vf_fine_conf_count * sizeof(float));
-    for (uint32_t i = 0; i < grid->vf_fine_conf_count; i++) {
-        grid->vf_fine_conf_values[i] = 0.60f + i * 0.05f;
-    }
-
-    /* VF_NOISE_FLOOR_MULT: 2.0-4.0 step 0.5 (5 values) */
+    /* VF_NOISE_FLOOR_MULT: 2.0-4.0 step 0.5 (5 values) - changed in optimization */
     grid->vf_noise_mult_count = 5;
     grid->vf_noise_mult_values = malloc(grid->vf_noise_mult_count * sizeof(float));
     for (uint32_t i = 0; i < grid->vf_noise_mult_count; i++) {
         grid->vf_noise_mult_values[i] = 2.0f + i * 0.5f;
     }
 
-    /* VF_AMPLITUDE_THRESH_RATIO: 0.05-0.20 step 0.05 (4 values) */
-    grid->vf_amp_ratio_count = 4;
-    grid->vf_amp_ratio_values = malloc(grid->vf_amp_ratio_count * sizeof(float));
-    for (uint32_t i = 0; i < grid->vf_amp_ratio_count; i++) {
-        grid->vf_amp_ratio_values[i] = 0.05f + i * 0.05f;
+    /*
+     * NEW PARAMETERS - High Priority
+     */
+
+    /* VF_AMP_HIGH_THRESH: 250-400 step 50 (4 values) */
+    grid->vf_amp_high_thresh_count = 4;
+    grid->vf_amp_high_thresh_values = malloc(grid->vf_amp_high_thresh_count * sizeof(float));
+    for (uint32_t i = 0; i < grid->vf_amp_high_thresh_count; i++) {
+        grid->vf_amp_high_thresh_values[i] = 250.0f + i * 50.0f;
     }
 
-    /* VF_EVIDENCE_THRESHOLD: 3.0-5.0 step 0.5 (5 values) */
-    grid->vf_evidence_count = 5;
-    grid->vf_evidence_values = malloc(grid->vf_evidence_count * sizeof(float));
-    for (uint32_t i = 0; i < grid->vf_evidence_count; i++) {
-        grid->vf_evidence_values[i] = 3.0f + i * 0.5f;
+    /* VF_AMP_MEDIUM_THRESH: 150-250 step 25 (5 values) */
+    grid->vf_amp_medium_thresh_count = 5;
+    grid->vf_amp_medium_thresh_values = malloc(grid->vf_amp_medium_thresh_count * sizeof(float));
+    for (uint32_t i = 0; i < grid->vf_amp_medium_thresh_count; i++) {
+        grid->vf_amp_medium_thresh_values[i] = 150.0f + i * 25.0f;
+    }
+
+    /* VF_AMP_LOW_THRESH: 75-150 step 25 (4 values) */
+    grid->vf_amp_low_thresh_count = 4;
+    grid->vf_amp_low_thresh_values = malloc(grid->vf_amp_low_thresh_count * sizeof(float));
+    for (uint32_t i = 0; i < grid->vf_amp_low_thresh_count; i++) {
+        grid->vf_amp_low_thresh_values[i] = 75.0f + i * 25.0f;
+    }
+
+    /* VF_AMP_VLOW_THRESH: 25-75 step 25 (3 values) */
+    grid->vf_amp_vlow_thresh_count = 3;
+    grid->vf_amp_vlow_thresh_values = malloc(grid->vf_amp_vlow_thresh_count * sizeof(float));
+    for (uint32_t i = 0; i < grid->vf_amp_vlow_thresh_count; i++) {
+        grid->vf_amp_vlow_thresh_values[i] = 25.0f + i * 25.0f;
+    }
+
+    /* VF_ZCR_HIGH_THRESH: 0.15-0.35 step 0.05 (5 values) */
+    grid->vf_zcr_high_thresh_count = 5;
+    grid->vf_zcr_high_thresh_values = malloc(grid->vf_zcr_high_thresh_count * sizeof(float));
+    for (uint32_t i = 0; i < grid->vf_zcr_high_thresh_count; i++) {
+        grid->vf_zcr_high_thresh_values[i] = 0.15f + i * 0.05f;
+    }
+
+    /* VF_ZCR_MOD_THRESH: 0.10-0.25 step 0.05 (4 values) */
+    grid->vf_zcr_mod_thresh_count = 4;
+    grid->vf_zcr_mod_thresh_values = malloc(grid->vf_zcr_mod_thresh_count * sizeof(float));
+    for (uint32_t i = 0; i < grid->vf_zcr_mod_thresh_count; i++) {
+        grid->vf_zcr_mod_thresh_values[i] = 0.10f + i * 0.05f;
+    }
+
+    /* VF_TCR_HIGH_THRESH: 0.3-0.7 step 0.1 (5 values) */
+    grid->vf_tcr_high_thresh_count = 5;
+    grid->vf_tcr_high_thresh_values = malloc(grid->vf_tcr_high_thresh_count * sizeof(float));
+    for (uint32_t i = 0; i < grid->vf_tcr_high_thresh_count; i++) {
+        grid->vf_tcr_high_thresh_values[i] = 0.3f + i * 0.1f;
+    }
+
+    /* VF_TCR_MOD_THRESH: 0.2-0.5 step 0.1 (4 values) */
+    grid->vf_tcr_mod_thresh_count = 4;
+    grid->vf_tcr_mod_thresh_values = malloc(grid->vf_tcr_mod_thresh_count * sizeof(float));
+    for (uint32_t i = 0; i < grid->vf_tcr_mod_thresh_count; i++) {
+        grid->vf_tcr_mod_thresh_values[i] = 0.2f + i * 0.1f;
+    }
+
+    /* VF_ENTROPY_HIGH_THRESH: 0.5-0.7 step 0.05 (5 values) */
+    grid->vf_entropy_high_thresh_count = 5;
+    grid->vf_entropy_high_thresh_values = malloc(grid->vf_entropy_high_thresh_count * sizeof(float));
+    for (uint32_t i = 0; i < grid->vf_entropy_high_thresh_count; i++) {
+        grid->vf_entropy_high_thresh_values[i] = 0.5f + i * 0.05f;
+    }
+
+    /* VF_ENTROPY_MOD_THRESH: 0.3-0.5 step 0.05 (5 values) */
+    grid->vf_entropy_mod_thresh_count = 5;
+    grid->vf_entropy_mod_thresh_values = malloc(grid->vf_entropy_mod_thresh_count * sizeof(float));
+    for (uint32_t i = 0; i < grid->vf_entropy_mod_thresh_count; i++) {
+        grid->vf_entropy_mod_thresh_values[i] = 0.3f + i * 0.05f;
+    }
+
+    /* VF_ORG_HR_MIN: 100-140 step 10 (5 values) */
+    grid->vf_org_hr_min_count = 5;
+    grid->vf_org_hr_min_values = malloc(grid->vf_org_hr_min_count * sizeof(float));
+    for (uint32_t i = 0; i < grid->vf_org_hr_min_count; i++) {
+        grid->vf_org_hr_min_values[i] = 100.0f + i * 10.0f;
+    }
+
+    /* VF_ORG_HR_MAX: 180-250 step 10 (8 values) */
+    grid->vf_org_hr_max_count = 8;
+    grid->vf_org_hr_max_values = malloc(grid->vf_org_hr_max_count * sizeof(float));
+    for (uint32_t i = 0; i < grid->vf_org_hr_max_count; i++) {
+        grid->vf_org_hr_max_values[i] = 180.0f + i * 10.0f;
+    }
+
+    /* VF_ORG_CV_THRESH: 10-20 step 2.5 (5 values) */
+    grid->vf_org_cv_thresh_count = 5;
+    grid->vf_org_cv_thresh_values = malloc(grid->vf_org_cv_thresh_count * sizeof(float));
+    for (uint32_t i = 0; i < grid->vf_org_cv_thresh_count; i++) {
+        grid->vf_org_cv_thresh_values[i] = 10.0f + i * 2.5f;
+    }
+
+    /* VF_QRS_RATE_PENALTY_THRESH: 0.5-1.0 step 0.1 (6 values) */
+    grid->vf_qrs_rate_penalty_thresh_count = 6;
+    grid->vf_qrs_rate_penalty_thresh_values = malloc(grid->vf_qrs_rate_penalty_thresh_count * sizeof(float));
+    for (uint32_t i = 0; i < grid->vf_qrs_rate_penalty_thresh_count; i++) {
+        grid->vf_qrs_rate_penalty_thresh_values[i] = 0.5f + i * 0.1f;
+    }
+
+    /*
+     * NEW VT PARAMETERS - Medium Priority
+     */
+
+    /* VT_HR_HIGH_THRESH: 140-180 step 10 (5 values) */
+    grid->vt_hr_high_thresh_count = 5;
+    grid->vt_hr_high_thresh_values = malloc(grid->vt_hr_high_thresh_count * sizeof(float));
+    for (uint32_t i = 0; i < grid->vt_hr_high_thresh_count; i++) {
+        grid->vt_hr_high_thresh_values[i] = 140.0f + i * 10.0f;
+    }
+
+    /* VT_QRS_VWIDE_THRESH: 120-160 step 10 (5 values) */
+    grid->vt_qrs_vwide_thresh_count = 5;
+    grid->vt_qrs_vwide_thresh_values = malloc(grid->vt_qrs_vwide_thresh_count * sizeof(float));
+    for (uint32_t i = 0; i < grid->vt_qrs_vwide_thresh_count; i++) {
+        grid->vt_qrs_vwide_thresh_values[i] = 120.0f + i * 10.0f;
+    }
+
+    /* VT_VREGULAR_CV_THRESH: 5-15 step 2.5 (5 values) */
+    grid->vt_vregular_cv_thresh_count = 5;
+    grid->vt_vregular_cv_thresh_values = malloc(grid->vt_vregular_cv_thresh_count * sizeof(float));
+    for (uint32_t i = 0; i < grid->vt_vregular_cv_thresh_count; i++) {
+        grid->vt_vregular_cv_thresh_values[i] = 5.0f + i * 2.5f;
     }
 }
 
 /* Free grid memory */
 static void free_grid(param_grid_t *grid)
 {
+    /* Original parameters */
     free(grid->vt_hr_values);
     free(grid->vt_qrs_values);
     free(grid->vt_reg_values);
     free(grid->vt_conf_values);
     free(grid->vf_fmin_values);
     free(grid->vf_fmax_values);
-    free(grid->vf_zcr_values);
     free(grid->vf_conf_values);
     free(grid->vf_min_amp_values);
     free(grid->vf_dominance_values);
@@ -397,6 +520,27 @@ static void free_grid(param_grid_t *grid)
     free(grid->vf_noise_mult_values);
     free(grid->vf_amp_ratio_values);
     free(grid->vf_evidence_values);
+
+    /* New VF parameters */
+    free(grid->vf_amp_high_thresh_values);
+    free(grid->vf_amp_medium_thresh_values);
+    free(grid->vf_amp_low_thresh_values);
+    free(grid->vf_amp_vlow_thresh_values);
+    free(grid->vf_zcr_high_thresh_values);
+    free(grid->vf_zcr_mod_thresh_values);
+    free(grid->vf_tcr_high_thresh_values);
+    free(grid->vf_tcr_mod_thresh_values);
+    free(grid->vf_entropy_high_thresh_values);
+    free(grid->vf_entropy_mod_thresh_values);
+    free(grid->vf_org_hr_min_values);
+    free(grid->vf_org_hr_max_values);
+    free(grid->vf_org_cv_thresh_values);
+    free(grid->vf_qrs_rate_penalty_thresh_values);
+
+    /* New VT parameters */
+    free(grid->vt_hr_high_thresh_values);
+    free(grid->vt_qrs_vwide_thresh_values);
+    free(grid->vt_vregular_cv_thresh_values);
 }
 
 /* Calculate total grid size */
@@ -408,7 +552,6 @@ static uint64_t grid_size(const param_grid_t *grid)
            grid->vt_conf_count *
            grid->vf_fmin_count *
            grid->vf_fmax_count *
-           grid->vf_zcr_count *
            grid->vf_conf_count *
            grid->vf_min_amp_count *
            grid->vf_dominance_count *
@@ -416,7 +559,26 @@ static uint64_t grid_size(const param_grid_t *grid)
            grid->vf_fine_conf_count *
            grid->vf_noise_mult_count *
            grid->vf_amp_ratio_count *
-           grid->vf_evidence_count;
+           grid->vf_evidence_count *
+           /* New VF parameters */
+           grid->vf_amp_high_thresh_count *
+           grid->vf_amp_medium_thresh_count *
+           grid->vf_amp_low_thresh_count *
+           grid->vf_amp_vlow_thresh_count *
+           grid->vf_zcr_high_thresh_count *
+           grid->vf_zcr_mod_thresh_count *
+           grid->vf_tcr_high_thresh_count *
+           grid->vf_tcr_mod_thresh_count *
+           grid->vf_entropy_high_thresh_count *
+           grid->vf_entropy_mod_thresh_count *
+           grid->vf_org_hr_min_count *
+           grid->vf_org_hr_max_count *
+           grid->vf_org_cv_thresh_count *
+           grid->vf_qrs_rate_penalty_thresh_count *
+           /* New VT parameters */
+           grid->vt_hr_high_thresh_count *
+           grid->vt_qrs_vwide_thresh_count *
+           grid->vt_vregular_cv_thresh_count;
 }
 
 /* Get configuration at grid index */
@@ -425,6 +587,60 @@ static void grid_get_config(const param_grid_t *grid, uint64_t index, ekg_config
     /* Decode multi-dimensional index (reverse order of multiplication in grid_size) */
     uint64_t idx = index;
 
+    /* New VT parameters (decode last to first from grid_size) */
+    uint32_t i_vt_vregular_cv = idx % grid->vt_vregular_cv_thresh_count;
+    idx /= grid->vt_vregular_cv_thresh_count;
+
+    uint32_t i_vt_qrs_vwide = idx % grid->vt_qrs_vwide_thresh_count;
+    idx /= grid->vt_qrs_vwide_thresh_count;
+
+    uint32_t i_vt_hr_high = idx % grid->vt_hr_high_thresh_count;
+    idx /= grid->vt_hr_high_thresh_count;
+
+    /* New VF parameters */
+    uint32_t i_vf_qrs_rate_penalty = idx % grid->vf_qrs_rate_penalty_thresh_count;
+    idx /= grid->vf_qrs_rate_penalty_thresh_count;
+
+    uint32_t i_vf_org_cv = idx % grid->vf_org_cv_thresh_count;
+    idx /= grid->vf_org_cv_thresh_count;
+
+    uint32_t i_vf_org_hr_max = idx % grid->vf_org_hr_max_count;
+    idx /= grid->vf_org_hr_max_count;
+
+    uint32_t i_vf_org_hr_min = idx % grid->vf_org_hr_min_count;
+    idx /= grid->vf_org_hr_min_count;
+
+    uint32_t i_vf_entropy_mod = idx % grid->vf_entropy_mod_thresh_count;
+    idx /= grid->vf_entropy_mod_thresh_count;
+
+    uint32_t i_vf_entropy_high = idx % grid->vf_entropy_high_thresh_count;
+    idx /= grid->vf_entropy_high_thresh_count;
+
+    uint32_t i_vf_tcr_mod = idx % grid->vf_tcr_mod_thresh_count;
+    idx /= grid->vf_tcr_mod_thresh_count;
+
+    uint32_t i_vf_tcr_high = idx % grid->vf_tcr_high_thresh_count;
+    idx /= grid->vf_tcr_high_thresh_count;
+
+    uint32_t i_vf_zcr_mod = idx % grid->vf_zcr_mod_thresh_count;
+    idx /= grid->vf_zcr_mod_thresh_count;
+
+    uint32_t i_vf_zcr_high = idx % grid->vf_zcr_high_thresh_count;
+    idx /= grid->vf_zcr_high_thresh_count;
+
+    uint32_t i_vf_amp_vlow = idx % grid->vf_amp_vlow_thresh_count;
+    idx /= grid->vf_amp_vlow_thresh_count;
+
+    uint32_t i_vf_amp_low = idx % grid->vf_amp_low_thresh_count;
+    idx /= grid->vf_amp_low_thresh_count;
+
+    uint32_t i_vf_amp_medium = idx % grid->vf_amp_medium_thresh_count;
+    idx /= grid->vf_amp_medium_thresh_count;
+
+    uint32_t i_vf_amp_high = idx % grid->vf_amp_high_thresh_count;
+    idx /= grid->vf_amp_high_thresh_count;
+
+    /* Original parameters (continue decoding) */
     uint32_t i14 = idx % grid->vf_evidence_count;
     idx /= grid->vf_evidence_count;
 
@@ -449,9 +665,6 @@ static void grid_get_config(const param_grid_t *grid, uint64_t index, ekg_config
     uint32_t i7 = idx % grid->vf_conf_count;
     idx /= grid->vf_conf_count;
 
-    uint32_t i6 = idx % grid->vf_zcr_count;
-    idx /= grid->vf_zcr_count;
-
     uint32_t i5 = idx % grid->vf_fmax_count;
     idx /= grid->vf_fmax_count;
 
@@ -469,14 +682,13 @@ static void grid_get_config(const param_grid_t *grid, uint64_t index, ekg_config
 
     uint32_t i0 = idx % grid->vt_hr_count;
 
-    /* Build configuration - all 15 parameters */
+    /* Build configuration - original 15 parameters */
     config->vt_hr_threshold = grid->vt_hr_values[i0];
     config->vt_qrs_width_ms = grid->vt_qrs_values[i1];
     config->vt_regularity_cv = grid->vt_reg_values[i2];
     config->vt_confidence_threshold = grid->vt_conf_values[i3];
     config->vf_freq_min = grid->vf_fmin_values[i4];
     config->vf_freq_max = grid->vf_fmax_values[i5];
-    config->vf_zcr_threshold = grid->vf_zcr_values[i6];
     config->vf_confidence_threshold = grid->vf_conf_values[i7];
     config->vf_min_amplitude = grid->vf_min_amp_values[i8];
     config->vf_dominance_threshold = grid->vf_dominance_values[i9];
@@ -485,11 +697,58 @@ static void grid_get_config(const param_grid_t *grid, uint64_t index, ekg_config
     config->vf_noise_floor_mult = grid->vf_noise_mult_values[i12];
     config->vf_amplitude_thresh_ratio = grid->vf_amp_ratio_values[i13];
     config->vf_evidence_threshold = grid->vf_evidence_values[i14];
+
+    /* New VF evidence amplitude thresholds */
+    config->vf_amp_high_thresh = grid->vf_amp_high_thresh_values[i_vf_amp_high];
+    config->vf_amp_medium_thresh = grid->vf_amp_medium_thresh_values[i_vf_amp_medium];
+    config->vf_amp_low_thresh = grid->vf_amp_low_thresh_values[i_vf_amp_low];
+    config->vf_amp_vlow_thresh = grid->vf_amp_vlow_thresh_values[i_vf_amp_vlow];
+
+    /* New irregularity thresholds */
+    config->vf_zcr_high_thresh = grid->vf_zcr_high_thresh_values[i_vf_zcr_high];
+    config->vf_zcr_mod_thresh = grid->vf_zcr_mod_thresh_values[i_vf_zcr_mod];
+    config->vf_tcr_high_thresh = grid->vf_tcr_high_thresh_values[i_vf_tcr_high];
+    config->vf_tcr_mod_thresh = grid->vf_tcr_mod_thresh_values[i_vf_tcr_mod];
+
+    /* New entropy thresholds */
+    config->vf_entropy_high_thresh = grid->vf_entropy_high_thresh_values[i_vf_entropy_high];
+    config->vf_entropy_mod_thresh = grid->vf_entropy_mod_thresh_values[i_vf_entropy_mod];
+
+    /* New organized rhythm detection */
+    config->vf_org_hr_min = grid->vf_org_hr_min_values[i_vf_org_hr_min];
+    config->vf_org_hr_max = grid->vf_org_hr_max_values[i_vf_org_hr_max];
+    config->vf_org_cv_thresh = grid->vf_org_cv_thresh_values[i_vf_org_cv];
+
+    /* New QRS rate penalty */
+    config->vf_qrs_rate_penalty_thresh = grid->vf_qrs_rate_penalty_thresh_values[i_vf_qrs_rate_penalty];
+
+    /* New VT Bayesian boundaries */
+    config->vt_hr_high_thresh = grid->vt_hr_high_thresh_values[i_vt_hr_high];
+    config->vt_qrs_vwide_thresh = grid->vt_qrs_vwide_thresh_values[i_vt_qrs_vwide];
+    config->vt_vregular_cv_thresh = grid->vt_vregular_cv_thresh_values[i_vt_vregular_cv];
 }
 
 /* ========================================
  * Search Strategies
  * ======================================== */
+
+/* Write result row to CSV file */
+static void write_result_csv(FILE *f, const ekg_config_t *config, const metrics_t *metrics)
+{
+    fprintf(f, "%.1f,%.1f,%.1f,%.2f,%.1f,%.1f,%.2f,"
+            "%.1f,%.2f,%.1f,%.2f,%.1f,%.2f,%.1f,"
+            "%.4f,%.4f,%.4f,%.4f,%.4f,%u,%u,%u,%u\n",
+            config->vt_hr_threshold, config->vt_qrs_width_ms, config->vt_regularity_cv,
+            config->vt_confidence_threshold, config->vf_freq_min, config->vf_freq_max,
+            config->vf_confidence_threshold,
+            config->vf_min_amplitude, config->vf_dominance_threshold,
+            config->vf_fine_amplitude_max, config->vf_fine_confidence,
+            config->vf_noise_floor_mult, config->vf_amplitude_thresh_ratio,
+            config->vf_evidence_threshold,
+            metrics->accuracy, metrics->sensitivity, metrics->specificity,
+            metrics->precision, metrics->f1_score,
+            metrics->tp, metrics->tn, metrics->fp, metrics->fn);
+}
 
 /* Random search */
 static void search_random(const param_grid_t *grid, const dataset_t *dataset,
@@ -513,19 +772,7 @@ static void search_random(const param_grid_t *grid, const dataset_t *dataset,
 
         /* Write to CSV */
         if (progress->csv_file != NULL) {
-            fprintf(progress->csv_file, "%.1f,%.1f,%.1f,%.2f,%.1f,%.1f,%.2f,%.2f,"
-                    "%.1f,%.2f,%.1f,%.2f,%.1f,%.2f,%.1f,"
-                    "%.4f,%.4f,%.4f,%.4f,%.4f,%u,%u,%u,%u\n",
-                    config.vt_hr_threshold, config.vt_qrs_width_ms, config.vt_regularity_cv,
-                    config.vt_confidence_threshold, config.vf_freq_min, config.vf_freq_max,
-                    config.vf_zcr_threshold, config.vf_confidence_threshold,
-                    config.vf_min_amplitude, config.vf_dominance_threshold,
-                    config.vf_fine_amplitude_max, config.vf_fine_confidence,
-                    config.vf_noise_floor_mult, config.vf_amplitude_thresh_ratio,
-                    config.vf_evidence_threshold,
-                    metrics->accuracy, metrics->sensitivity, metrics->specificity,
-                    metrics->precision, metrics->f1_score,
-                    metrics->tp, metrics->tn, metrics->fp, metrics->fn);
+            write_result_csv(progress->csv_file, &config, metrics);
         }
 
         /* Update best using F2-score (prioritizes sensitivity) */
@@ -559,7 +806,6 @@ static void search_local(const param_grid_t *grid, const dataset_t *dataset,
         if (rand() % 10 < 2) config.vt_confidence_threshold = grid->vt_conf_values[rand() % grid->vt_conf_count];
         if (rand() % 10 < 2) config.vf_freq_min = grid->vf_fmin_values[rand() % grid->vf_fmin_count];
         if (rand() % 10 < 2) config.vf_freq_max = grid->vf_fmax_values[rand() % grid->vf_fmax_count];
-        if (rand() % 10 < 2) config.vf_zcr_threshold = grid->vf_zcr_values[rand() % grid->vf_zcr_count];
         if (rand() % 10 < 2) config.vf_confidence_threshold = grid->vf_conf_values[rand() % grid->vf_conf_count];
         if (rand() % 10 < 2) config.vf_min_amplitude = grid->vf_min_amp_values[rand() % grid->vf_min_amp_count];
         if (rand() % 10 < 2) config.vf_dominance_threshold = grid->vf_dominance_values[rand() % grid->vf_dominance_count];
@@ -568,6 +814,23 @@ static void search_local(const param_grid_t *grid, const dataset_t *dataset,
         if (rand() % 10 < 2) config.vf_noise_floor_mult = grid->vf_noise_mult_values[rand() % grid->vf_noise_mult_count];
         if (rand() % 10 < 2) config.vf_amplitude_thresh_ratio = grid->vf_amp_ratio_values[rand() % grid->vf_amp_ratio_count];
         if (rand() % 10 < 2) config.vf_evidence_threshold = grid->vf_evidence_values[rand() % grid->vf_evidence_count];
+        if (rand() % 10 < 2) config.vf_amp_high_thresh = grid->vf_amp_high_thresh_values[rand() % grid->vf_amp_high_thresh_count];
+        if (rand() % 10 < 2) config.vf_amp_medium_thresh = grid->vf_amp_medium_thresh_values[rand() % grid->vf_amp_medium_thresh_count];
+        if (rand() % 10 < 2) config.vf_amp_low_thresh = grid->vf_amp_low_thresh_values[rand() % grid->vf_amp_low_thresh_count];
+        if (rand() % 10 < 2) config.vf_amp_vlow_thresh = grid->vf_amp_vlow_thresh_values[rand() % grid->vf_amp_vlow_thresh_count];
+        if (rand() % 10 < 2) config.vf_zcr_high_thresh = grid->vf_zcr_high_thresh_values[rand() % grid->vf_zcr_high_thresh_count];
+        if (rand() % 10 < 2) config.vf_zcr_mod_thresh = grid->vf_zcr_mod_thresh_values[rand() % grid->vf_zcr_mod_thresh_count];
+        if (rand() % 10 < 2) config.vf_tcr_high_thresh = grid->vf_tcr_high_thresh_values[rand() % grid->vf_tcr_high_thresh_count];
+        if (rand() % 10 < 2) config.vf_tcr_mod_thresh = grid->vf_tcr_mod_thresh_values[rand() % grid->vf_tcr_mod_thresh_count];
+        if (rand() % 10 < 2) config.vf_entropy_high_thresh = grid->vf_entropy_high_thresh_values[rand() % grid->vf_entropy_high_thresh_count];
+        if (rand() % 10 < 2) config.vf_entropy_mod_thresh = grid->vf_entropy_mod_thresh_values[rand() % grid->vf_entropy_mod_thresh_count];
+        if (rand() % 10 < 2) config.vf_org_hr_min = grid->vf_org_hr_min_values[rand() % grid->vf_org_hr_min_count];
+        if (rand() % 10 < 2) config.vf_org_hr_max = grid->vf_org_hr_max_values[rand() % grid->vf_org_hr_max_count];
+        if (rand() % 10 < 2) config.vf_org_cv_thresh = grid->vf_org_cv_thresh_values[rand() % grid->vf_org_cv_thresh_count];
+        if (rand() % 10 < 2) config.vf_qrs_rate_penalty_thresh = grid->vf_qrs_rate_penalty_thresh_values[rand() % grid->vf_qrs_rate_penalty_thresh_count];
+        if (rand() % 10 < 2) config.vt_hr_high_thresh = grid->vt_hr_high_thresh_values[rand() % grid->vt_hr_high_thresh_count];
+        if (rand() % 10 < 2) config.vt_qrs_vwide_thresh = grid->vt_qrs_vwide_thresh_values[rand() % grid->vt_qrs_vwide_thresh_count];
+        if (rand() % 10 < 2) config.vt_vregular_cv_thresh = grid->vt_vregular_cv_thresh_values[rand() % grid->vt_vregular_cv_thresh_count];
 
         /* Skip if no parameter changed */
         if (memcmp(&config, &progress->best_config, sizeof(ekg_config_t)) == 0) {
@@ -581,19 +844,7 @@ static void search_local(const param_grid_t *grid, const dataset_t *dataset,
 
         /* Write to CSV */
         if (progress->csv_file != NULL) {
-            fprintf(progress->csv_file, "%.1f,%.1f,%.1f,%.2f,%.1f,%.1f,%.2f,%.2f,"
-                    "%.1f,%.2f,%.1f,%.2f,%.1f,%.2f,%.1f,"
-                    "%.4f,%.4f,%.4f,%.4f,%.4f,%u,%u,%u,%u\n",
-                    config.vt_hr_threshold, config.vt_qrs_width_ms, config.vt_regularity_cv,
-                    config.vt_confidence_threshold, config.vf_freq_min, config.vf_freq_max,
-                    config.vf_zcr_threshold, config.vf_confidence_threshold,
-                    config.vf_min_amplitude, config.vf_dominance_threshold,
-                    config.vf_fine_amplitude_max, config.vf_fine_confidence,
-                    config.vf_noise_floor_mult, config.vf_amplitude_thresh_ratio,
-                    config.vf_evidence_threshold,
-                    metrics->accuracy, metrics->sensitivity, metrics->specificity,
-                    metrics->precision, metrics->f1_score,
-                    metrics->tp, metrics->tn, metrics->fp, metrics->fn);
+            write_result_csv(progress->csv_file, &config, metrics);
         }
 
         /* Update best if improved using F2-score (prioritizes sensitivity) */
@@ -606,54 +857,6 @@ static void search_local(const param_grid_t *grid, const dataset_t *dataset,
 
         /* Print progress every 10 combinations */
         if (progress->completed % 10 == 0 || i == num_samples - 1) {
-            print_progress(progress);
-        }
-    }
-}
-
-/* Exhaustive search */
-static void search_exhaustive(const param_grid_t *grid, const dataset_t *dataset,
-                              progress_t *progress, uint32_t source_sample_rate)
-{
-    uint64_t total = grid_size(grid);
-    progress->best_metrics.f2_score = 0.0f;
-
-    for (uint64_t i = 0; i < total; i++) {
-        ekg_config_t config;
-        grid_get_config(grid, i, &config);
-
-        /* Evaluate */
-        eval_result_t result;
-        evaluate_config(&config, dataset, NULL, dataset->count, &result, source_sample_rate);
-        metrics_t *metrics = &result.overall;
-
-        /* Write to CSV */
-        if (progress->csv_file != NULL) {
-            fprintf(progress->csv_file, "%.1f,%.1f,%.1f,%.2f,%.1f,%.1f,%.2f,%.2f,"
-                    "%.1f,%.2f,%.1f,%.2f,%.1f,%.2f,%.1f,"
-                    "%.4f,%.4f,%.4f,%.4f,%.4f,%u,%u,%u,%u\n",
-                    config.vt_hr_threshold, config.vt_qrs_width_ms, config.vt_regularity_cv,
-                    config.vt_confidence_threshold, config.vf_freq_min, config.vf_freq_max,
-                    config.vf_zcr_threshold, config.vf_confidence_threshold,
-                    config.vf_min_amplitude, config.vf_dominance_threshold,
-                    config.vf_fine_amplitude_max, config.vf_fine_confidence,
-                    config.vf_noise_floor_mult, config.vf_amplitude_thresh_ratio,
-                    config.vf_evidence_threshold,
-                    metrics->accuracy, metrics->sensitivity, metrics->specificity,
-                    metrics->precision, metrics->f1_score,
-                    metrics->tp, metrics->tn, metrics->fp, metrics->fn);
-        }
-
-        /* Update best */
-        if (metrics->f1_score > progress->best_metrics.f1_score) {
-            progress->best_metrics = *metrics;
-            progress->best_config = config;
-        }
-
-        progress->completed = i + 1;
-
-        /* Print progress every 100 iterations or at end */
-        if ((i + 1) % 100 == 0 || i == total - 1) {
             print_progress(progress);
         }
     }
@@ -690,8 +893,17 @@ static int write_best_config_header(const char *filename, const ekg_config_t *co
     }
 
     fprintf(f, "/* Generated by ekg_train */\n");
-    fprintf(f, "/* Performance: F1=%.1f%%, Sensitivity=%.1f%%, Specificity=%.1f%% */\n",
-            metrics->f1_score * 100, metrics->sensitivity * 100, metrics->specificity * 100);
+    fprintf(f, "/*\n");
+    fprintf(f, " * PERFORMANCE METRICS:\n");
+    fprintf(f, " *   Accuracy:    %.1f%%\n", metrics->accuracy * 100.0f);
+    fprintf(f, " *   Sensitivity: %.1f%%\n", metrics->sensitivity * 100.0f);
+    fprintf(f, " *   Specificity: %.1f%%\n", metrics->specificity * 100.0f);
+    fprintf(f, " *   Precision:   %.1f%%\n", metrics->precision * 100.0f);
+    fprintf(f, " *   F1-Score:    %.1f%%\n", metrics->f1_score * 100.0f);
+    fprintf(f, " *   F2-Score:    %.1f%%\n", metrics->f2_score * 100.0f);
+    fprintf(f, " *   Confusion:   TP=%u TN=%u FP=%u FN=%u\n",
+            metrics->tp, metrics->tn, metrics->fp, metrics->fn);
+    fprintf(f, " */\n");
     fprintf(f, "#ifndef EKG_OPTIMIZED_CONFIG_H\n");
     fprintf(f, "#define EKG_OPTIMIZED_CONFIG_H\n\n");
     fprintf(f, "#define VT_HR_THRESHOLD       %.1ff\n", config->vt_hr_threshold);
@@ -700,7 +912,6 @@ static int write_best_config_header(const char *filename, const ekg_config_t *co
     fprintf(f, "#define VT_CONFIDENCE_THRESHOLD %.2ff\n", config->vt_confidence_threshold);
     fprintf(f, "#define VF_FREQ_MIN           %.1ff\n", config->vf_freq_min);
     fprintf(f, "#define VF_FREQ_MAX           %.1ff\n", config->vf_freq_max);
-    fprintf(f, "#define VF_ZCR_THRESHOLD      %.2ff\n", config->vf_zcr_threshold);
     fprintf(f, "#define VF_CONFIDENCE_THRESHOLD %.2ff\n", config->vf_confidence_threshold);
     fprintf(f, "#define VF_MIN_AMPLITUDE      %.1ff\n", config->vf_min_amplitude);
     fprintf(f, "#define VF_DOMINANCE_THRESHOLD %.2ff\n", config->vf_dominance_threshold);
@@ -709,6 +920,29 @@ static int write_best_config_header(const char *filename, const ekg_config_t *co
     fprintf(f, "#define VF_NOISE_FLOOR_MULT   %.1ff\n", config->vf_noise_floor_mult);
     fprintf(f, "#define VF_AMPLITUDE_THRESHOLD_RATIO %.2ff\n", config->vf_amplitude_thresh_ratio);
     fprintf(f, "#define VF_EVIDENCE_THRESHOLD %.1ff\n", config->vf_evidence_threshold);
+    /* Evidence Amplitude Thresholds */
+    fprintf(f, "#define VF_AMP_HIGH_THRESH    %.1ff\n", config->vf_amp_high_thresh);
+    fprintf(f, "#define VF_AMP_MEDIUM_THRESH  %.1ff\n", config->vf_amp_medium_thresh);
+    fprintf(f, "#define VF_AMP_LOW_THRESH     %.1ff\n", config->vf_amp_low_thresh);
+    fprintf(f, "#define VF_AMP_VLOW_THRESH    %.1ff\n", config->vf_amp_vlow_thresh);
+    /* Irregularity Thresholds */
+    fprintf(f, "#define VF_ZCR_HIGH_THRESH    %.2ff\n", config->vf_zcr_high_thresh);
+    fprintf(f, "#define VF_ZCR_MOD_THRESH     %.2ff\n", config->vf_zcr_mod_thresh);
+    fprintf(f, "#define VF_TCR_HIGH_THRESH    %.2ff\n", config->vf_tcr_high_thresh);
+    fprintf(f, "#define VF_TCR_MOD_THRESH     %.2ff\n", config->vf_tcr_mod_thresh);
+    /* Entropy Thresholds */
+    fprintf(f, "#define VF_ENTROPY_HIGH_THRESH %.2ff\n", config->vf_entropy_high_thresh);
+    fprintf(f, "#define VF_ENTROPY_MOD_THRESH %.2ff\n", config->vf_entropy_mod_thresh);
+    /* Organized Rhythm Detection */
+    fprintf(f, "#define VF_ORG_HR_MIN         %.1ff\n", config->vf_org_hr_min);
+    fprintf(f, "#define VF_ORG_HR_MAX         %.1ff\n", config->vf_org_hr_max);
+    fprintf(f, "#define VF_ORG_CV_THRESH      %.1ff\n", config->vf_org_cv_thresh);
+    /* QRS Rate Penalty */
+    fprintf(f, "#define VF_QRS_RATE_PENALTY_THRESH %.2ff\n", config->vf_qrs_rate_penalty_thresh);
+    /* VT Bayesian Boundaries */
+    fprintf(f, "#define VT_HR_HIGH_THRESH     %.1ff\n", config->vt_hr_high_thresh);
+    fprintf(f, "#define VT_QRS_VWIDE_THRESH   %.1ff\n", config->vt_qrs_vwide_thresh);
+    fprintf(f, "#define VT_VREGULAR_CV_THRESH %.1ff\n", config->vt_vregular_cv_thresh);
     fprintf(f, "\n#endif /* EKG_OPTIMIZED_CONFIG_H */\n");
 
     fclose(f);
@@ -726,7 +960,7 @@ static void print_help(const char *prog_name)
     printf("USAGE:\n");
     printf("  %s [OPTIONS] <dataset_path>\n\n", prog_name);
     printf("OPTIONS:\n");
-    printf("  -s, --strategy <type>      Search strategy: random, local, exhaustive, adaptive (default: random)\n");
+    printf("  -s, --strategy <type>      Search strategy: random, local, adaptive (default: random)\n");
     printf("  -n, --num-combinations <N> Number of combinations (default: 2000)\n");
     printf("  -o, --output <file>        Output CSV file (default: results.csv)\n");
     printf("  -c, --config <file>        Best config header file (default: best_config.h)\n");
