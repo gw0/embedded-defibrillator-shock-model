@@ -13,6 +13,31 @@
 #include "qrs_detector.h"
 #include "ekg_config.h"
 
+/**
+ * Measurement Result Structures
+ *
+ * Each analysis function returns both a measurement and confidence in that measurement.
+ * Confidence reflects reliability of the measurement itself, not relevance to VF detection.
+ */
+
+/* Frequency analysis result */
+typedef struct {
+    float frequency;     /* Dominant frequency in Hz (0 if none) */
+    float confidence;    /* Confidence in this measurement [0, 1] */
+} freq_result_t;
+
+/* Entropy analysis result */
+typedef struct {
+    float entropy;       /* Spectral entropy [0, 1] */
+    float confidence;    /* Confidence in measurement [0, 1] */
+} entropy_result_t;
+
+/* Crossing rate result */
+typedef struct {
+    float rate;          /* Crossings per second */
+    float confidence;    /* Confidence in measurement [0, 1] */
+} crossing_result_t;
+
 /* Failure reason codes - compile with -DDIAG_ENABLED to enable */
 #ifdef DIAG_ENABLED
 #define DIAG_FAIL_NONE             0x00
@@ -62,15 +87,17 @@ float goertzel_magnitude(const float *signal, uint16_t num_samples,
  * Find dominant frequency in VF range with configurable resolution
  *
  * Uses 0.5 Hz resolution and windowed Goertzel for better frequency estimation.
+ * Returns measurement confidence based on peak prominence, power concentration,
+ * and VF band dominance.
  *
  * @param signal            Input signal
  * @param num_samples       Number of samples
  * @param sample_rate       Sample rate in Hz
  * @param dominance_thresh  Dominance threshold (0.0-1.0)
- * @return                  Dominant frequency in Hz, or 0 if not dominant enough
+ * @return                  freq_result_t with frequency and confidence
  */
-float find_dominant_frequency(const float *signal, uint16_t num_samples,
-                              uint16_t sample_rate, float dominance_thresh);
+freq_result_t find_dominant_frequency(const float *signal, uint16_t num_samples,
+                                      uint16_t sample_rate, float dominance_thresh);
 
 /**
  * Calculate zero-crossing rate
@@ -105,15 +132,16 @@ float estimate_noise_floor(const float *signal, uint16_t num_samples);
  * Calculate threshold-based crossing rate
  *
  * Counts crossings where amplitude exceeds threshold (noise-robust alternative to ZCR)
+ * Returns measurement confidence based on sample count and signal amplitude.
  *
  * @param signal      Input signal
  * @param num_samples Number of samples
  * @param sample_rate Sample rate in Hz
  * @param threshold   Amplitude threshold (e.g., 10% of peak)
- * @return            Threshold crossings per second
+ * @return            crossing_result_t with rate and confidence
  */
-float calculate_threshold_crossing_rate(const float *signal, uint16_t num_samples,
-                                        uint16_t sample_rate, float threshold);
+crossing_result_t calculate_threshold_crossing_rate(const float *signal, uint16_t num_samples,
+                                                    uint16_t sample_rate, float threshold);
 
 /**
  * Check for organized tachycardia (SVT or regular VT)
@@ -133,14 +161,15 @@ uint8_t check_organized_tachycardia(const qrs_detection_result_t *qrs_result,
  *
  * VF has high entropy (chaotic, broad spectrum).
  * NSR/SVT has low entropy (organized, narrow peaks).
+ * Returns measurement confidence based on sample count and power level.
  *
  * @param signal       Input signal
  * @param num_samples  Number of samples
  * @param sample_rate  Sample rate in Hz
- * @return             Spectral entropy (0.0-1.0, higher = more chaotic)
+ * @return             entropy_result_t with entropy and confidence
  */
-float calculate_spectral_entropy(const float *signal, uint16_t num_samples,
-                                 uint16_t sample_rate);
+entropy_result_t calculate_spectral_entropy(const float *signal, uint16_t num_samples,
+                                            uint16_t sample_rate);
 
 /**
  * Detect Ventricular Fibrillation

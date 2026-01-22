@@ -230,10 +230,11 @@ void test_helper_functions(void)
 
     /* Test threshold crossing rate */
     float threshold = amplitude * 0.1f;
-    float tcr = calculate_threshold_crossing_rate(signal, TEST_SAMPLES,
-                                                   EKG_SAMPLE_RATE, threshold);
-    run_test("Threshold crossing rate > 0", tcr > 0.0f);
-    printf("  Threshold crossing rate: %.1f/s (threshold=%.1f)\n", tcr, threshold);
+    crossing_result_t tcr = calculate_threshold_crossing_rate(signal, TEST_SAMPLES,
+                                                               EKG_SAMPLE_RATE, threshold);
+    run_test("Threshold crossing rate > 0", tcr.rate > 0.0f);
+    run_test("Threshold crossing confidence in [0,1]", tcr.confidence >= 0.0f && tcr.confidence <= 1.0f);
+    printf("  Threshold crossing rate: %.1f/s (conf=%.2f, threshold=%.1f)\n", tcr.rate, tcr.confidence, threshold);
 
     /* Test Goertzel with Hanning window */
     float mag_6hz = goertzel_magnitude(signal, TEST_SAMPLES, 6.0f, EKG_SAMPLE_RATE);
@@ -242,9 +243,41 @@ void test_helper_functions(void)
     printf("  Magnitude at 6 Hz: %.1f, at 20 Hz: %.1f\n", mag_6hz, mag_20hz);
 
     /* Test frequency detection with dominance threshold */
-    float dom_freq = find_dominant_frequency(signal, TEST_SAMPLES, EKG_SAMPLE_RATE, 0.4f);
-    run_test("Dominant frequency in VF range", dom_freq >= VF_FREQ_MIN && dom_freq <= VF_FREQ_MAX);
-    printf("  Dominant frequency: %.1f Hz\n", dom_freq);
+    freq_result_t freq = find_dominant_frequency(signal, TEST_SAMPLES, EKG_SAMPLE_RATE, 0.4f);
+    run_test("Dominant frequency in VF range", freq.frequency >= VF_FREQ_MIN && freq.frequency <= VF_FREQ_MAX);
+    run_test("Frequency confidence in [0,1]", freq.confidence >= 0.0f && freq.confidence <= 1.0f);
+    printf("  Dominant frequency: %.1f Hz (confidence=%.2f)\n", freq.frequency, freq.confidence);
+
+    /* Test zero-crossing rate */
+    float zcr = calculate_zero_crossing_rate(signal, TEST_SAMPLES, EKG_SAMPLE_RATE);
+    run_test("Zero crossing rate > 0", zcr > 0.0f);
+    printf("  Zero crossing rate: %.1f/s\n", zcr);
+
+    /* Test spectral entropy */
+    entropy_result_t ent = calculate_spectral_entropy(signal, TEST_SAMPLES, EKG_SAMPLE_RATE);
+    run_test("Spectral entropy in [0,1]", ent.entropy >= 0.0f && ent.entropy <= 1.0f);
+    run_test("Entropy confidence in [0,1]", ent.confidence >= 0.0f && ent.confidence <= 1.0f);
+    printf("  Spectral entropy: %.2f (confidence=%.2f)\n", ent.entropy, ent.confidence);
+
+    /* Test organized tachycardia detection with regular rhythm */
+    qrs_detection_result_t qrs_regular;
+    memset(&qrs_regular, 0, sizeof(qrs_regular));
+    qrs_regular.count = 6;
+    uint16_t regular_locations[6] = {50, 100, 150, 200, 250, 300};  /* 120 bpm, very regular */
+    qrs_regular.locations = regular_locations;
+    uint8_t is_organized = check_organized_tachycardia(&qrs_regular, EKG_SAMPLE_RATE);
+    run_test("Regular tachycardia detected as organized", is_organized == 1);
+    printf("  Organized tachycardia (regular): %s\n", is_organized ? "yes" : "no");
+
+    /* Test organized tachycardia detection with irregular rhythm (VF-like) */
+    qrs_detection_result_t qrs_irregular;
+    memset(&qrs_irregular, 0, sizeof(qrs_irregular));
+    qrs_irregular.count = 2;  /* Too few QRS for assessment */
+    uint16_t irregular_locations[2] = {50, 200};
+    qrs_irregular.locations = irregular_locations;
+    uint8_t is_organized_irreg = check_organized_tachycardia(&qrs_irregular, EKG_SAMPLE_RATE);
+    run_test("Irregular/sparse QRS not detected as organized", is_organized_irreg == 0);
+    printf("  Organized tachycardia (irregular): %s\n", is_organized_irreg ? "yes" : "no");
 }
 
 /* Test: Boundary conditions */

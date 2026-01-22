@@ -56,28 +56,29 @@ float goertzel_magnitude(const float *signal, uint16_t num_samples,
     return magnitude;
 }
 
-float find_dominant_frequency(const float *signal, uint16_t num_samples,
-                              uint16_t sample_rate, float dominance_thresh)
+freq_result_t find_dominant_frequency(const float *signal, uint16_t num_samples,
+                                      uint16_t sample_rate, float dominance_thresh)
 {
+    freq_result_t result = {0.0f, 0.0f};
+
     if (signal == NULL || num_samples == 0 || sample_rate == 0) {
-        return 0.0f;
+        return result;
     }
 
     /*
      * Find dominant frequency using enhanced resolution (0.5 Hz steps):
-     * 1. Test frequencies from 3.5 to 10.5 Hz at 0.5 Hz resolution
+     * 1. Test frequencies from 2.5 to 12 Hz at 0.5 Hz resolution
      * 2. Use windowed Goertzel for better frequency estimation
-     * 3. For VF detection, we check if VF band power is significant
-     *
-     * VF is chaotic by nature - no single frequency will strongly dominate.
-     * Instead, we check that:
-     * a) There's significant power in the VF band (vs noise)
-     * b) The peak frequency is returned if power concentration is reasonable
+     * 3. Calculate measurement confidence based on:
+     *    - Peak prominence (max vs second max)
+     *    - Power concentration (max / total)
+     *    - VF band dominance (VF power vs out-of-band)
      */
 
     float magnitudes[VF_NUM_TEST_FREQS];
     float total_vf_power = 0.0f;
     float max_mag = 0.0f;
+    float second_max = 0.0f;
     uint8_t max_idx = 0;
 
     /* Calculate magnitude at each test frequency using windowed Goertzel */
@@ -87,8 +88,11 @@ float find_dominant_frequency(const float *signal, uint16_t num_samples,
         total_vf_power += magnitudes[i];
 
         if (magnitudes[i] > max_mag) {
+            second_max = max_mag;
             max_mag = magnitudes[i];
             max_idx = i;
+        } else if (magnitudes[i] > second_max) {
+            second_max = magnitudes[i];
         }
     }
 
@@ -98,28 +102,37 @@ float find_dominant_frequency(const float *signal, uint16_t num_samples,
     float out_of_band_power = low_freq_power + high_freq_power;
 
     /*
-     * VF detection criteria:
-     * 1. VF band power should be significantly higher than out-of-band power
-     * 2. OR the peak magnitude should meet dominance threshold within VF band
-     * 3. OR the peak magnitude should be substantial (for strong VF signals)
+     * Calculate measurement confidence based on three factors:
+     * 1. Peak prominence: How much does max peak exceed others?
+     * 2. Power concentration: Is power concentrated or spread across spectrum?
+     * 3. VF band dominance: Is VF band power > out-of-band power?
      */
-    if (total_vf_power > 0.0f) {
-        /* Check if VF band dominates over out-of-band frequencies */
+    if (total_vf_power > 0.0f && max_mag > 0.0f) {
+        /* Factor 1: Peak prominence (max vs second) */
+        float prominence = (max_mag - second_max) / max_mag;  /* 0-1 */
+
+        /* Factor 2: Power concentration (max / total) */
+        float concentration = max_mag / total_vf_power;  /* 0-1 */
+
+        /* Factor 3: VF band dominance vs out-of-band */
         float vf_ratio = total_vf_power / (total_vf_power + out_of_band_power + 0.001f);
 
-        /* Return peak frequency if:
-         * - VF band has >60% of total power (including out-of-band), OR
-         * - Peak frequency meets dominance threshold within VF band, OR
-         * - Peak magnitude is substantial (>1000) indicating strong VF signal
-         */
+        /* Combine factors with weights */
+        result.confidence = (prominence * 0.4f + concentration * 0.3f + vf_ratio * 0.3f);
+
+        /* Return frequency if conditions are met */
         if (vf_ratio > 0.6f ||
             max_mag >= dominance_thresh * total_vf_power ||
             max_mag > 1000.0f) {
-            return VF_TEST_FREQS[max_idx];
+            result.frequency = VF_TEST_FREQS[max_idx];
+        } else {
+            /* Low confidence that there's no dominant frequency */
+            result.frequency = 0.0f;
+            result.confidence = vf_ratio * 0.5f;  /* Scale down when no clear peak */
         }
     }
 
-    return 0.0f;  /* No clear VF-range frequency detected */
+    return result;
 }
 
 float calculate_zero_crossing_rate(const float *signal, uint16_t num_samples,
@@ -209,22 +222,35 @@ float estimate_noise_floor(const float *signal, uint16_t num_samples)
     return mean_abs * 0.6745f;  /* 1/1.4826 */
 }
 
-float calculate_threshold_crossing_rate(const float *signal, uint16_t num_samples,
-                                        uint16_t sample_rate, float threshold)
+crossing_result_t calculate_threshold_crossing_rate(const float *signal, uint16_t num_samples,
+                                                    uint16_t sample_rate, float threshold)
 {
+    crossing_result_t result = {0.0f, 0.0f};
+
     if (signal == NULL || num_samples == 0 || sample_rate == 0 || threshold <= 0.0f) {
-        return 0.0f;
+        return result;
     }
 
     /*
      * Calculate threshold-based crossing rate:
      * Count transitions where signal crosses the threshold level (positive or negative)
      * This is more robust to noise than zero-crossing rate
+     *
+     * Confidence based on:
+     * - Sample count: More samples = more reliable rate estimate
+     * - Number of crossings: Very few crossings = less reliable rate
      */
 
     uint16_t crossings = 0;
     uint8_t above_pos_threshold = (signal[0] > threshold) ? 1 : 0;
     uint8_t below_neg_threshold = (signal[0] < -threshold) ? 1 : 0;
+
+    /* Track amplitude statistics for confidence calculation */
+    float max_amp = 0.0f;
+    for (uint16_t i = 0; i < num_samples; i++) {
+        float abs_val = (signal[i] >= 0) ? signal[i] : -signal[i];
+        if (abs_val > max_amp) max_amp = abs_val;
+    }
 
     for (uint16_t i = 1; i < num_samples; i++) {
         uint8_t now_above_pos = (signal[i] > threshold) ? 1 : 0;
@@ -246,7 +272,23 @@ float calculate_threshold_crossing_rate(const float *signal, uint16_t num_sample
     /* Calculate duration in seconds */
     float duration_sec = (float)num_samples / (float)sample_rate;
 
-    return (float)crossings / duration_sec;
+    result.rate = (float)crossings / duration_sec;
+
+    /* Confidence factors */
+    /* Factor 1: Sample count - 300+ samples (3 sec at 100Hz) = full confidence */
+    float sample_factor = (float)num_samples / 300.0f;
+    if (sample_factor > 1.0f) sample_factor = 1.0f;
+
+    /* Factor 2: Crossing count - need at least a few crossings for reliable rate */
+    float crossing_factor = (crossings >= 6) ? 1.0f : (float)crossings / 6.0f;
+
+    /* Factor 3: Amplitude headroom - threshold should be well below max amplitude */
+    float headroom_factor = (max_amp > threshold * 2.0f) ? 1.0f :
+                            (max_amp > threshold) ? (max_amp - threshold) / threshold : 0.0f;
+
+    result.confidence = sample_factor * crossing_factor * headroom_factor;
+
+    return result;
 }
 
 uint8_t check_organized_tachycardia(const qrs_detection_result_t *qrs_result,
@@ -298,11 +340,13 @@ uint8_t check_organized_tachycardia(const qrs_detection_result_t *qrs_result,
     return (cv < 15.0f) ? 1 : 0;
 }
 
-float calculate_spectral_entropy(const float *signal, uint16_t num_samples,
-                                 uint16_t sample_rate)
+entropy_result_t calculate_spectral_entropy(const float *signal, uint16_t num_samples,
+                                            uint16_t sample_rate)
 {
+    entropy_result_t result = {0.0f, 0.0f};
+
     if (signal == NULL || num_samples == 0 || sample_rate == 0) {
-        return 0.0f;
+        return result;
     }
 
     /*
@@ -314,6 +358,10 @@ float calculate_spectral_entropy(const float *signal, uint16_t num_samples,
      *
      * High entropy = chaotic signal (VF)
      * Low entropy = organized signal (NSR/SVT)
+     *
+     * Confidence based on:
+     * - Sample count: More samples = more reliable entropy estimate
+     * - Power level: Very low power makes entropy unreliable
      */
 
     float powers[VF_NUM_TEST_FREQS];
@@ -329,7 +377,7 @@ float calculate_spectral_entropy(const float *signal, uint16_t num_samples,
 
     /* Avoid division by zero */
     if (total_power < 1e-10f) {
-        return 0.0f;
+        return result;
     }
 
     /* Calculate Shannon entropy */
@@ -345,7 +393,19 @@ float calculate_spectral_entropy(const float *signal, uint16_t num_samples,
     float max_entropy = logf((float)VF_NUM_TEST_FREQS);
     float normalized_entropy = entropy / max_entropy;
 
-    return normalized_entropy;
+    result.entropy = normalized_entropy;
+
+    /* Confidence factors */
+    /* Factor 1: Sample count - 500+ samples = full confidence */
+    float sample_factor = (float)num_samples / 500.0f;
+    if (sample_factor > 1.0f) sample_factor = 1.0f;
+
+    /* Factor 2: Power level - reasonable power for reliable entropy */
+    float power_factor = (total_power > 100.0f) ? 1.0f : total_power / 100.0f;
+
+    result.confidence = sample_factor * power_factor;
+
+    return result;
 }
 
 int detect_vf(const float *signal, uint16_t num_samples,
@@ -400,19 +460,19 @@ int detect_vf(const float *signal, uint16_t num_samples,
     result->adaptive_threshold = adaptive_threshold;
 
     /* Use frequency detection with configurable dominance threshold */
-    float dominant_freq = find_dominant_frequency(signal, num_samples,
-                                                   sample_rate,
-                                                   config->vf_dominance_threshold);
-    result->dominant_freq = dominant_freq;
+    freq_result_t freq = find_dominant_frequency(signal, num_samples,
+                                                  sample_rate,
+                                                  config->vf_dominance_threshold);
+    result->dominant_freq = freq.frequency;
 
     /* Calculate both zero-crossing rate and threshold-based crossing rate */
     float zcr = calculate_zero_crossing_rate(signal, num_samples, sample_rate);
     result->zero_crossing_rate = zcr;
 
     float threshold_for_crossing = amplitude * config->vf_amplitude_thresh_ratio;
-    float tcr = calculate_threshold_crossing_rate(signal, num_samples, sample_rate,
-                                                   threshold_for_crossing);
-    result->threshold_crossing_rate = tcr;
+    crossing_result_t tcr = calculate_threshold_crossing_rate(signal, num_samples, sample_rate,
+                                                               threshold_for_crossing);
+    result->threshold_crossing_rate = tcr.rate;
 
     /* Check QRS detection rate across full signal */
     uint8_t qrs_count = qrs_result->count;
@@ -448,9 +508,12 @@ int detect_vf(const float *signal, uint16_t num_samples,
     uint8_t is_organized_tachy = check_organized_tachycardia(qrs_result, sample_rate);
 
     /* Calculate spectral entropy for VF/organized rhythm discrimination */
-    float spectral_entropy = calculate_spectral_entropy(signal, num_samples, sample_rate);
+    entropy_result_t ent = calculate_spectral_entropy(signal, num_samples, sample_rate);
 
-    /* Weighted evidence scoring - each criterion contributes to cumulative score */
+    /*
+     * Weighted evidence scoring with measurement confidence
+     * Each criterion's contribution is scaled by measurement confidence.
+     */
 
 #ifdef DIAG_ENABLED
     result->diag_fail_reason = DIAG_FAIL_NONE;
@@ -458,7 +521,7 @@ int detect_vf(const float *signal, uint16_t num_samples,
 
     float evidence_score = 0.0f;
 
-    /* Amplitude contribution (soft threshold) */
+    /* Amplitude contribution (soft threshold) - amplitude is directly measurable, high confidence */
     if (amplitude > 300.0f) {
         evidence_score += VF_EV_AMP_HIGH;
     } else if (amplitude > 200.0f) {
@@ -469,33 +532,33 @@ int detect_vf(const float *signal, uint16_t num_samples,
         evidence_score += VF_EV_AMP_VLOW;
     }
 
-    /* Frequency contribution */
-    if (dominant_freq >= 5.0f && dominant_freq <= 8.0f) {
-        evidence_score += VF_EV_FREQ_OPTIMAL;
-    } else if (dominant_freq >= config->vf_freq_min &&
-               dominant_freq <= config->vf_freq_max) {
-        evidence_score += VF_EV_FREQ_GOOD;
-    } else if (dominant_freq >= 2.5f && dominant_freq <= 12.0f) {
-        evidence_score += VF_EV_FREQ_EDGE;
+    /* Frequency contribution - weighted by measurement confidence */
+    if (freq.frequency >= 5.0f && freq.frequency <= 8.0f) {
+        evidence_score += VF_EV_FREQ_OPTIMAL * freq.confidence;
+    } else if (freq.frequency >= config->vf_freq_min &&
+               freq.frequency <= config->vf_freq_max) {
+        evidence_score += VF_EV_FREQ_GOOD * freq.confidence;
+    } else if (freq.frequency >= 2.5f && freq.frequency <= 12.0f) {
+        evidence_score += VF_EV_FREQ_EDGE * freq.confidence;
     }
 
-    /* Irregularity contribution */
+    /* Irregularity contribution - weighted by crossing rate confidence */
     if (qrs_absent) {
         evidence_score += VF_EV_QRS_ABSENT;
-    } else if (zcr > 0.25f || tcr > 0.5f) {
-        evidence_score += VF_EV_HIGH_IRREG;
-    } else if (zcr > 0.15f || tcr > 0.3f) {
-        evidence_score += VF_EV_MOD_IRREG;
+    } else if (zcr > 0.25f || tcr.rate > 0.5f) {
+        evidence_score += VF_EV_HIGH_IRREG * tcr.confidence;
+    } else if (zcr > 0.15f || tcr.rate > 0.3f) {
+        evidence_score += VF_EV_MOD_IRREG * tcr.confidence;
     }
 
-    /* Entropy contribution */
-    if (spectral_entropy > 0.6f) {
-        evidence_score += VF_EV_ENTROPY_HIGH;
-    } else if (spectral_entropy > 0.4f) {
-        evidence_score += VF_EV_ENTROPY_MOD;
+    /* Entropy contribution - weighted by measurement confidence */
+    if (ent.entropy > 0.6f) {
+        evidence_score += VF_EV_ENTROPY_HIGH * ent.confidence;
+    } else if (ent.entropy > 0.4f) {
+        evidence_score += VF_EV_ENTROPY_MOD * ent.confidence;
     }
 
-    /* Organized rhythm penalties */
+    /* Organized rhythm penalties (not scaled - penalties are definitive) */
     if (is_organized_tachy) {
         evidence_score += VF_EV_ORGANIZED_PENALTY;
     } else if (qrs_rate > 0.8f) {
@@ -508,9 +571,9 @@ int detect_vf(const float *signal, uint16_t num_samples,
         result->vf_detected = 1;
         result->is_fine_vf = (amplitude <= config->vf_fine_amplitude_max) ? 1 : 0;
 
-        /* Confidence based on margin above threshold using tanh scaling */
+        /* Confidence via sigmoid of margin above threshold: [0, 1] range */
         float margin = evidence_score - config->vf_evidence_threshold;
-        result->confidence = 0.5f + 0.5f * tanhf(margin / 2.0f);  /* 0.5-1.0 range */
+        result->confidence = 1.0f / (1.0f + expf(-margin));
 
         /* Scale by signal quality */
         float signal_quality = estimate_signal_quality(signal, num_samples, (float)sample_rate);
@@ -527,9 +590,9 @@ int detect_vf(const float *signal, uint16_t num_samples,
     /* Track which criteria contributed below "good" levels */
     if (amplitude <= 200.0f)  /* < VF_EV_AMP_MEDIUM */
         result->diag_fail_reason |= DIAG_FAIL_AMPLITUDE;
-    if (dominant_freq < 5.0f || dominant_freq > 8.0f)  /* < VF_EV_FREQ_OPTIMAL */
+    if (freq.frequency < 5.0f || freq.frequency > 8.0f)  /* < VF_EV_FREQ_OPTIMAL */
         result->diag_fail_reason |= DIAG_FAIL_FREQUENCY;
-    if (!qrs_absent && zcr <= 0.25f && tcr <= 0.5f)  /* < VF_EV_HIGH_IRREG */
+    if (!qrs_absent && zcr <= 0.25f && tcr.rate <= 0.5f)  /* < VF_EV_HIGH_IRREG */
         result->diag_fail_reason |= DIAG_FAIL_IRREGULARITY;
     if (is_organized_tachy)
         result->diag_fail_reason |= DIAG_FAIL_ORGANIZED;

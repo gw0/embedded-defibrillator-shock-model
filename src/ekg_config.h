@@ -147,21 +147,6 @@ static const ekg_config_t EKG_DEFAULT_CONFIG = {
 /* Log-likelihood ratios for Bayesian confidence calculation */
 /* LR+ when feature present, LR- when absent (in log space) */
 
-/* VF detection log-LRs */
-#define LR_VF_FREQ_BASIC_POS      1.40f   /* freq in VF range - boosted for sensitivity */
-#define LR_VF_FREQ_BASIC_NEG     -1.20f   /* reduced penalty for edge frequencies */
-#define LR_VF_FREQ_OPTIMAL_POS    1.61f   /* freq 5-8 Hz */
-#define LR_VF_FREQ_OPTIMAL_NEG   -0.69f
-#define LR_VF_ZCR_HIGH_POS        0.92f
-#define LR_VF_ZCR_HIGH_NEG       -0.92f
-#define LR_VF_TCR_HIGH_POS        0.69f
-#define LR_VF_TCR_HIGH_NEG       -0.69f
-#define LR_VF_QRS_ABSENT_POS      1.60f   /* stronger evidence when no QRS */
-#define LR_VF_QRS_ABSENT_NEG     -2.30f
-#define LR_VF_FINE_PENALTY       -0.20f   /* reduced penalty for fine VF */
-#define LR_VF_ENTROPY_HIGH_POS    0.80f   /* high spectral entropy (chaotic) */
-#define LR_VF_ENTROPY_HIGH_NEG   -0.60f   /* low entropy (organized rhythm) */
-
 /* VT detection log-LRs */
 #define LR_VT_HR_THRESH_POS       1.10f
 #define LR_VT_HR_THRESH_NEG      -1.20f
