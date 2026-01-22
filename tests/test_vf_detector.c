@@ -62,33 +62,47 @@ void generate_fine_vf(float *signal, uint16_t num_samples, float amplitude)
     }
 }
 
-/* Helper to generate normal sinus rhythm */
+/* Helper to generate normal sinus rhythm with realistic PQRST morphology */
 void generate_nsr(float *signal, uint16_t num_samples, float hr_bpm)
 {
     float rr_interval_sec = 60.0f / hr_bpm;
     uint16_t rr_samples = (uint16_t)(rr_interval_sec * EKG_SAMPLE_RATE);
 
-    /* Initialize to baseline with small noise */
+    /* Initialize to baseline with minimal noise */
     for (uint16_t i = 0; i < num_samples; i++) {
-        signal[i] = ((float)(rand() % 20) - 10.0f);
+        signal[i] = ((float)(rand() % 6) - 3.0f);
     }
 
-    /* Generate QRS complexes */
+    /* Generate PQRST complexes with smooth, realistic morphology */
     for (uint16_t beat = 0; beat * rr_samples < num_samples; beat++) {
-        uint16_t qrs_start = beat * rr_samples;
-        if (qrs_start >= num_samples) break;
+        uint16_t r_peak = beat * rr_samples + 15;
+        if (r_peak >= num_samples) break;
 
-        /* QRS complex */
-        for (int j = -2; j <= 5 && (qrs_start + j) < num_samples; j++) {
-            if (qrs_start + j < 0) continue;
-            if (j < 0) {
-                signal[qrs_start + j] = -100.0f;
-            } else if (j <= 2) {
-                signal[qrs_start + j] = 1500.0f - 400.0f * (float)abs(j - 1);
-            } else {
-                signal[qrs_start + j] = -150.0f;
-            }
+        for (int j = -25; j <= 40 && (r_peak + j) < num_samples; j++) {
+            if (r_peak + j < 0) continue;
+            float t;
+
+            /* P wave: small, smooth bump before QRS */
+            t = (float)(j + 18) / 4.0f;
+            signal[r_peak + j] += 50.0f * expf(-t * t);
+
+            /* QRS complex: wider R wave for lower frequency content */
+            t = (float)j / 3.5f;
+            signal[r_peak + j] += 800.0f * expf(-t * t);
+
+            /* S wave: gentle negative deflection */
+            t = (float)(j - 6) / 2.5f;
+            signal[r_peak + j] += -80.0f * expf(-t * t);
+
+            /* T wave: broad, smooth repolarization wave */
+            t = (float)(j - 25) / 7.0f;
+            signal[r_peak + j] += 120.0f * expf(-t * t);
         }
+    }
+
+    /* Add minimal baseline wander (low frequency) */
+    for (uint16_t i = 0; i < num_samples; i++) {
+        signal[i] += 5.0f * sinf(2.0f * PI * 0.1f * (float)i / EKG_SAMPLE_RATE);
     }
 }
 
@@ -173,10 +187,14 @@ void test_nsr_not_vf(void)
     float signal[TEST_SAMPLES];
     generate_nsr(signal, TEST_SAMPLES, 70.0f);
 
-    /* Create QRS result with detected QRS complexes */
+    /* Create QRS result with detected QRS complexes and their locations */
     qrs_detection_result_t qrs_result;
     memset(&qrs_result, 0, sizeof(qrs_result));
-    qrs_result.count = 5;  /* ~70 bpm for 5 seconds */
+
+    /* 70 bpm = 857ms RR interval = 86 samples at 100Hz */
+    uint16_t qrs_locations[] = {15, 101, 187, 273, 359, 445};
+    qrs_result.locations = qrs_locations;
+    qrs_result.count = 6;
 
     vf_detection_result_t vf_result;
     int ret = detect_vf(signal, TEST_SAMPLES, &qrs_result, EKG_SAMPLE_RATE, NULL, &vf_result);
