@@ -49,6 +49,7 @@ typedef struct {
     float *vf_fine_conf_values;     uint32_t vf_fine_conf_count;
     float *vf_noise_mult_values;    uint32_t vf_noise_mult_count;
     float *vf_amp_ratio_values;     uint32_t vf_amp_ratio_count;
+    float *vf_evidence_values;      uint32_t vf_evidence_count;  /* Evidence scoring threshold */
 } param_grid_t;
 
 /* Progress tracker */
@@ -184,7 +185,7 @@ int main(int argc, char *argv[])
     progress.csv_file = fopen(output_file, "w");
     if (progress.csv_file != NULL) {
         fprintf(progress.csv_file, "vt_hr,vt_qrs,vt_reg,vt_conf,vf_min,vf_max,vf_zcr,vf_conf,"
-                "vf_min_amp,vf_dominance,vf_fine_amp_max,vf_fine_conf,vf_noise_mult,vf_amp_ratio,"
+                "vf_min_amp,vf_dominance,vf_fine_amp_max,vf_fine_conf,vf_noise_mult,vf_amp_ratio,vf_evidence,"
                 "accuracy,sensitivity,specificity,precision,f1,tp,tn,fp,fn\n");
     }
 
@@ -246,6 +247,7 @@ int main(int argc, char *argv[])
     printf("VF_FINE_CONFIDENCE: %.2f\n", progress.best_config.vf_fine_confidence);
     printf("VF_NOISE_FLOOR_MULT: %.1f\n", progress.best_config.vf_noise_floor_mult);
     printf("VF_AMPLITUDE_THRESH_RATIO: %.2f\n", progress.best_config.vf_amplitude_thresh_ratio);
+    printf("VF_EVIDENCE_THRESHOLD: %.1f\n", progress.best_config.vf_evidence_threshold);
     printf("\n");
 
     printf("PERFORMANCE METRICS:\n");
@@ -368,6 +370,13 @@ static void init_default_grid(param_grid_t *grid)
     for (uint32_t i = 0; i < grid->vf_amp_ratio_count; i++) {
         grid->vf_amp_ratio_values[i] = 0.05f + i * 0.05f;
     }
+
+    /* VF_EVIDENCE_THRESHOLD: 3.0-5.0 step 0.5 (5 values) */
+    grid->vf_evidence_count = 5;
+    grid->vf_evidence_values = malloc(grid->vf_evidence_count * sizeof(float));
+    for (uint32_t i = 0; i < grid->vf_evidence_count; i++) {
+        grid->vf_evidence_values[i] = 3.0f + i * 0.5f;
+    }
 }
 
 /* Free grid memory */
@@ -387,6 +396,7 @@ static void free_grid(param_grid_t *grid)
     free(grid->vf_fine_conf_values);
     free(grid->vf_noise_mult_values);
     free(grid->vf_amp_ratio_values);
+    free(grid->vf_evidence_values);
 }
 
 /* Calculate total grid size */
@@ -405,7 +415,8 @@ static uint64_t grid_size(const param_grid_t *grid)
            grid->vf_fine_amp_max_count *
            grid->vf_fine_conf_count *
            grid->vf_noise_mult_count *
-           grid->vf_amp_ratio_count;
+           grid->vf_amp_ratio_count *
+           grid->vf_evidence_count;
 }
 
 /* Get configuration at grid index */
@@ -413,6 +424,9 @@ static void grid_get_config(const param_grid_t *grid, uint64_t index, ekg_config
 {
     /* Decode multi-dimensional index (reverse order of multiplication in grid_size) */
     uint64_t idx = index;
+
+    uint32_t i14 = idx % grid->vf_evidence_count;
+    idx /= grid->vf_evidence_count;
 
     uint32_t i13 = idx % grid->vf_amp_ratio_count;
     idx /= grid->vf_amp_ratio_count;
@@ -455,7 +469,7 @@ static void grid_get_config(const param_grid_t *grid, uint64_t index, ekg_config
 
     uint32_t i0 = idx % grid->vt_hr_count;
 
-    /* Build configuration - all 14 parameters */
+    /* Build configuration - all 15 parameters */
     config->vt_hr_threshold = grid->vt_hr_values[i0];
     config->vt_qrs_width_ms = grid->vt_qrs_values[i1];
     config->vt_regularity_cv = grid->vt_reg_values[i2];
@@ -470,6 +484,7 @@ static void grid_get_config(const param_grid_t *grid, uint64_t index, ekg_config
     config->vf_fine_confidence = grid->vf_fine_conf_values[i11];
     config->vf_noise_floor_mult = grid->vf_noise_mult_values[i12];
     config->vf_amplitude_thresh_ratio = grid->vf_amp_ratio_values[i13];
+    config->vf_evidence_threshold = grid->vf_evidence_values[i14];
 }
 
 /* ========================================
@@ -499,7 +514,7 @@ static void search_random(const param_grid_t *grid, const dataset_t *dataset,
         /* Write to CSV */
         if (progress->csv_file != NULL) {
             fprintf(progress->csv_file, "%.1f,%.1f,%.1f,%.2f,%.1f,%.1f,%.2f,%.2f,"
-                    "%.1f,%.2f,%.1f,%.2f,%.1f,%.2f,"
+                    "%.1f,%.2f,%.1f,%.2f,%.1f,%.2f,%.1f,"
                     "%.4f,%.4f,%.4f,%.4f,%.4f,%u,%u,%u,%u\n",
                     config.vt_hr_threshold, config.vt_qrs_width_ms, config.vt_regularity_cv,
                     config.vt_confidence_threshold, config.vf_freq_min, config.vf_freq_max,
@@ -507,6 +522,7 @@ static void search_random(const param_grid_t *grid, const dataset_t *dataset,
                     config.vf_min_amplitude, config.vf_dominance_threshold,
                     config.vf_fine_amplitude_max, config.vf_fine_confidence,
                     config.vf_noise_floor_mult, config.vf_amplitude_thresh_ratio,
+                    config.vf_evidence_threshold,
                     metrics->accuracy, metrics->sensitivity, metrics->specificity,
                     metrics->precision, metrics->f1_score,
                     metrics->tp, metrics->tn, metrics->fp, metrics->fn);
@@ -551,6 +567,7 @@ static void search_local(const param_grid_t *grid, const dataset_t *dataset,
         if (rand() % 10 < 2) config.vf_fine_confidence = grid->vf_fine_conf_values[rand() % grid->vf_fine_conf_count];
         if (rand() % 10 < 2) config.vf_noise_floor_mult = grid->vf_noise_mult_values[rand() % grid->vf_noise_mult_count];
         if (rand() % 10 < 2) config.vf_amplitude_thresh_ratio = grid->vf_amp_ratio_values[rand() % grid->vf_amp_ratio_count];
+        if (rand() % 10 < 2) config.vf_evidence_threshold = grid->vf_evidence_values[rand() % grid->vf_evidence_count];
 
         /* Skip if no parameter changed */
         if (memcmp(&config, &progress->best_config, sizeof(ekg_config_t)) == 0) {
@@ -565,7 +582,7 @@ static void search_local(const param_grid_t *grid, const dataset_t *dataset,
         /* Write to CSV */
         if (progress->csv_file != NULL) {
             fprintf(progress->csv_file, "%.1f,%.1f,%.1f,%.2f,%.1f,%.1f,%.2f,%.2f,"
-                    "%.1f,%.2f,%.1f,%.2f,%.1f,%.2f,"
+                    "%.1f,%.2f,%.1f,%.2f,%.1f,%.2f,%.1f,"
                     "%.4f,%.4f,%.4f,%.4f,%.4f,%u,%u,%u,%u\n",
                     config.vt_hr_threshold, config.vt_qrs_width_ms, config.vt_regularity_cv,
                     config.vt_confidence_threshold, config.vf_freq_min, config.vf_freq_max,
@@ -573,6 +590,7 @@ static void search_local(const param_grid_t *grid, const dataset_t *dataset,
                     config.vf_min_amplitude, config.vf_dominance_threshold,
                     config.vf_fine_amplitude_max, config.vf_fine_confidence,
                     config.vf_noise_floor_mult, config.vf_amplitude_thresh_ratio,
+                    config.vf_evidence_threshold,
                     metrics->accuracy, metrics->sensitivity, metrics->specificity,
                     metrics->precision, metrics->f1_score,
                     metrics->tp, metrics->tn, metrics->fp, metrics->fn);
@@ -612,7 +630,7 @@ static void search_exhaustive(const param_grid_t *grid, const dataset_t *dataset
         /* Write to CSV */
         if (progress->csv_file != NULL) {
             fprintf(progress->csv_file, "%.1f,%.1f,%.1f,%.2f,%.1f,%.1f,%.2f,%.2f,"
-                    "%.1f,%.2f,%.1f,%.2f,%.1f,%.2f,"
+                    "%.1f,%.2f,%.1f,%.2f,%.1f,%.2f,%.1f,"
                     "%.4f,%.4f,%.4f,%.4f,%.4f,%u,%u,%u,%u\n",
                     config.vt_hr_threshold, config.vt_qrs_width_ms, config.vt_regularity_cv,
                     config.vt_confidence_threshold, config.vf_freq_min, config.vf_freq_max,
@@ -620,6 +638,7 @@ static void search_exhaustive(const param_grid_t *grid, const dataset_t *dataset
                     config.vf_min_amplitude, config.vf_dominance_threshold,
                     config.vf_fine_amplitude_max, config.vf_fine_confidence,
                     config.vf_noise_floor_mult, config.vf_amplitude_thresh_ratio,
+                    config.vf_evidence_threshold,
                     metrics->accuracy, metrics->sensitivity, metrics->specificity,
                     metrics->precision, metrics->f1_score,
                     metrics->tp, metrics->tn, metrics->fp, metrics->fn);
@@ -689,6 +708,7 @@ static int write_best_config_header(const char *filename, const ekg_config_t *co
     fprintf(f, "#define VF_FINE_CONFIDENCE    %.2ff\n", config->vf_fine_confidence);
     fprintf(f, "#define VF_NOISE_FLOOR_MULT   %.1ff\n", config->vf_noise_floor_mult);
     fprintf(f, "#define VF_AMPLITUDE_THRESHOLD_RATIO %.2ff\n", config->vf_amplitude_thresh_ratio);
+    fprintf(f, "#define VF_EVIDENCE_THRESHOLD %.1ff\n", config->vf_evidence_threshold);
     fprintf(f, "\n#endif /* EKG_OPTIMIZED_CONFIG_H */\n");
 
     fclose(f);

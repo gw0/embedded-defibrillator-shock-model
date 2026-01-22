@@ -39,22 +39,23 @@
 #define VT_HR_THRESHOLD       120.0f  /* bpm */
 #define VT_QRS_WIDTH_MS       100.0f  /* ms */
 #define VT_QRS_WIDTH_SAMPLES  (VT_QRS_WIDTH_MS * EKG_SAMPLE_RATE / 1000.0f)  /* 10 */
-#define VT_REGULARITY_CV      30.0f   /* percent */
+#define VT_REGULARITY_CV      25.0f   /* percent */
 #define VT_MIN_CONSECUTIVE    3       /* Minimum consecutive wide QRS */
-#define VT_CONFIDENCE_THRESHOLD 0.80f  /* Confidence threshold for VT */
+#define VT_CONFIDENCE_THRESHOLD 0.70f  /* Confidence threshold for VT */
 
 /* VF Detection */
-#define VF_FREQ_MIN           2.5f    /* Hz - extended for slow VF */
-#define VF_FREQ_MAX           12.0f   /* Hz - extended for fast VF */
-#define VF_ZCR_THRESHOLD      0.10f   /* Zero-crossing rate threshold */
-#define VF_MIN_AMPLITUDE      50.0f   /* Minimum amplitude - lowered to catch more VF */
+#define VF_FREQ_MIN           3.0f    /* Hz - extended for slow VF */
+#define VF_FREQ_MAX           10.5f   /* Hz - extended for fast VF */
+#define VF_ZCR_THRESHOLD      0.25f   /* Zero-crossing rate threshold */
+#define VF_MIN_AMPLITUDE      200.0f   /* Minimum amplitude - lowered to catch more VF */
 #define VF_QRS_RATE_THRESHOLD 0.5f    /* QRS per second (below = absent) */
 #define VF_CONFIDENCE_THRESHOLD 0.70f  /* Confidence threshold - lowered for sensitivity */
-#define VF_DOMINANCE_THRESHOLD 0.25f  /* VF is chaotic - no single freq dominates */
+#define VF_DOMINANCE_THRESHOLD 0.45f  /* VF is chaotic - no single freq dominates */
 #define VF_FINE_AMPLITUDE_MAX 300.0f  /* Extended fine VF detection window */
-#define VF_FINE_CONFIDENCE    0.70f   /* Lower confidence for fine VF detection */
+#define VF_FINE_CONFIDENCE    0.60f   /* Lower confidence for fine VF detection */
 #define VF_NOISE_FLOOR_MULT   3.0f    /* VF threshold = noise_floor * this multiplier */
 #define VF_AMPLITUDE_THRESHOLD_RATIO 0.10f  /* 10% of peak for threshold crossings */
+#define VF_EVIDENCE_THRESHOLD 4.0f    /* Minimum evidence score for VF detection */
 
 /* Goertzel frequencies for VF detection - 0.5 Hz resolution, extended range 2.5-12 Hz */
 #define VF_NUM_TEST_FREQS     20
@@ -119,6 +120,9 @@ typedef struct {
     float vf_fine_confidence;      /* Lower confidence for fine VF */
     float vf_noise_floor_mult;     /* Noise floor multiplier for adaptive threshold */
     float vf_amplitude_thresh_ratio; /* Ratio of peak for threshold crossings */
+
+    /* Evidence Scoring Parameters */
+    float vf_evidence_threshold;   /* Minimum evidence score for VF detection */
 } ekg_config_t;
 
 /* Default configuration (used when NULL passed to ekg_analyze) */
@@ -136,7 +140,8 @@ static const ekg_config_t EKG_DEFAULT_CONFIG = {
     .vf_fine_amplitude_max = VF_FINE_AMPLITUDE_MAX,
     .vf_fine_confidence = VF_FINE_CONFIDENCE,
     .vf_noise_floor_mult = VF_NOISE_FLOOR_MULT,
-    .vf_amplitude_thresh_ratio = VF_AMPLITUDE_THRESHOLD_RATIO
+    .vf_amplitude_thresh_ratio = VF_AMPLITUDE_THRESHOLD_RATIO,
+    .vf_evidence_threshold = VF_EVIDENCE_THRESHOLD
 };
 
 /* Log-likelihood ratios for Bayesian confidence calculation */
@@ -176,5 +181,33 @@ static const ekg_config_t EKG_DEFAULT_CONFIG = {
 /* Signal quality */
 #define SNR_GOOD_THRESHOLD       10.0f
 #define SIGNAL_QUALITY_MIN        0.5f
+
+/* ========================================
+ * Evidence Scoring Weights
+ * ======================================== */
+
+/* Amplitude weights */
+#define VF_EV_AMP_HIGH            2.0f   /* amplitude > 300 */
+#define VF_EV_AMP_MEDIUM          1.5f   /* amplitude > 200 */
+#define VF_EV_AMP_LOW             1.0f   /* amplitude > 100 */
+#define VF_EV_AMP_VLOW            0.5f   /* amplitude > 50 */
+
+/* Frequency weights */
+#define VF_EV_FREQ_OPTIMAL        2.0f   /* 5-8 Hz */
+#define VF_EV_FREQ_GOOD           1.5f   /* 3-10.5 Hz (configurable range) */
+#define VF_EV_FREQ_EDGE           0.5f   /* 2.5-12 Hz */
+
+/* Irregularity weights */
+#define VF_EV_QRS_ABSENT          2.0f   /* no QRS detected */
+#define VF_EV_HIGH_IRREG          1.5f   /* ZCR > 0.25 or TCR > 0.5 */
+#define VF_EV_MOD_IRREG           0.5f   /* ZCR > 0.15 or TCR > 0.3 */
+
+/* Entropy weights */
+#define VF_EV_ENTROPY_HIGH        1.5f   /* entropy > 0.6 */
+#define VF_EV_ENTROPY_MOD         0.5f   /* entropy > 0.4 */
+
+/* Organized rhythm penalties */
+#define VF_EV_ORGANIZED_PENALTY  -3.0f   /* is_organized_tachy */
+#define VF_EV_QRS_PRESENT_PENALTY -3.0f  /* qrs_rate > 0.8 */
 
 #endif /* EKG_CONFIG_H */

@@ -393,7 +393,6 @@ int detect_vf(const float *signal, uint16_t num_samples,
     result->noise_floor = noise_floor;
 
     /* Calculate adaptive amplitude threshold */
-    float min_amplitude = config->vf_min_amplitude;
     float adaptive_threshold = noise_floor * config->vf_noise_floor_mult;
     if (adaptive_threshold < 50.0f) {
         adaptive_threshold = 50.0f;  /* Minimum threshold */
@@ -448,124 +447,72 @@ int detect_vf(const float *signal, uint16_t num_samples,
      */
     uint8_t is_organized_tachy = check_organized_tachycardia(qrs_result, sample_rate);
 
-    /*
-     * Check if rhythm is organized (likely VT or NSR, not VF)
-     * If we detect more than ~0.5 QRS per second, rhythm is organized
-     * VF should have very few or no detectable QRS complexes
-     */
-    uint8_t not_organized = (qrs_rate < 0.6f && !is_organized_tachy) ? 1 : 0;
-
     /* Calculate spectral entropy for VF/organized rhythm discrimination */
     float spectral_entropy = calculate_spectral_entropy(signal, num_samples, sample_rate);
 
-    /* Standard VF Detection Path */
-    if (amplitude > min_amplitude) {
-        /* Criterion: Dominant frequency in configured Hz range */
-        uint8_t freq_criterion = (dominant_freq >= config->vf_freq_min &&
-                                  dominant_freq <= config->vf_freq_max) ? 1 : 0;
+    /* Weighted evidence scoring - each criterion contributes to cumulative score */
 
-        /* Criterion: Irregularity (ZCR or threshold crossing rate) OR QRS absent */
-        uint8_t irregularity_criterion = (zcr > config->vf_zcr_threshold ||
-                                          tcr > config->vf_zcr_threshold * 2.0f ||
-                                          qrs_absent == 1) ? 1 : 0;
+    float evidence_score = 0.0f;
 
-        /* Criterion: High spectral entropy (chaotic signal) - used as supporting evidence
-         * Threshold 0.40 allows detection while still filtering organized rhythms */
-        uint8_t entropy_supports_vf = (spectral_entropy > 0.40f) ? 1 : 0;
-
-        /* VF detected if freq + irregularity + not_organized criteria met
-         * Entropy is used as additional confidence boost but not required */
-        if (freq_criterion && irregularity_criterion && not_organized) {
-            result->vf_detected = 1;
-            result->is_fine_vf = 0;
-
-            /* Calculate confidence using log-odds (Bayesian approach) */
-            float log_odds = 0.0f;  /* Prior: 50% */
-
-            /* Frequency criterion contribution */
-            if (dominant_freq >= 5.0f && dominant_freq <= 8.0f) {
-                log_odds += LR_VF_FREQ_OPTIMAL_POS;
-            } else if (dominant_freq >= config->vf_freq_min && dominant_freq <= config->vf_freq_max) {
-                log_odds += LR_VF_FREQ_BASIC_POS;
-            } else {
-                log_odds += LR_VF_FREQ_BASIC_NEG;
-            }
-
-            /* ZCR contribution */
-            log_odds += (zcr > config->vf_zcr_threshold) ? LR_VF_ZCR_HIGH_POS : LR_VF_ZCR_HIGH_NEG;
-
-            /* TCR contribution */
-            log_odds += (tcr > config->vf_zcr_threshold * 2.0f) ? LR_VF_TCR_HIGH_POS : LR_VF_TCR_HIGH_NEG;
-
-            /* QRS absence contribution */
-            log_odds += (qrs_absent == 1) ? LR_VF_QRS_ABSENT_POS : LR_VF_QRS_ABSENT_NEG;
-
-            /* Spectral entropy contribution - use the computed variable */
-            log_odds += entropy_supports_vf ? LR_VF_ENTROPY_HIGH_POS : LR_VF_ENTROPY_HIGH_NEG;
-
-            /* Convert to probability and scale by signal quality */
-            float signal_quality = estimate_signal_quality(signal, num_samples, (float)sample_rate);
-            result->confidence = log_odds_to_probability(log_odds) * signal_quality;
-            return EKG_SUCCESS;
-        }
+    /* Amplitude contribution (soft threshold) */
+    if (amplitude > 300.0f) {
+        evidence_score += VF_EV_AMP_HIGH;
+    } else if (amplitude > 200.0f) {
+        evidence_score += VF_EV_AMP_MEDIUM;
+    } else if (amplitude > 100.0f) {
+        evidence_score += VF_EV_AMP_LOW;
+    } else if (amplitude > 50.0f) {
+        evidence_score += VF_EV_AMP_VLOW;
     }
 
-    /*
-     * Fine VF Detection Path:
-     * This path is specifically designed to detect low-amplitude VF that
-     * would be missed by the standard path.
-     *
-     * Fine VF characteristics:
-     * - Lower amplitude than coarse VF but above noise floor
-     * - Still has chaotic electrical activity (frequency in VF band)
-     * - No organized QRS complexes
-     */
-    if (amplitude > adaptive_threshold &&
-        amplitude <= config->vf_fine_amplitude_max &&
-        qrs_absent == 1 &&
-        not_organized) {
+    /* Frequency contribution */
+    if (dominant_freq >= 5.0f && dominant_freq <= 8.0f) {
+        evidence_score += VF_EV_FREQ_OPTIMAL;
+    } else if (dominant_freq >= config->vf_freq_min &&
+               dominant_freq <= config->vf_freq_max) {
+        evidence_score += VF_EV_FREQ_GOOD;
+    } else if (dominant_freq >= 2.5f && dominant_freq <= 12.0f) {
+        evidence_score += VF_EV_FREQ_EDGE;
+    }
 
-        /* For fine VF, we need frequency in VF band */
-        /* Try detection even if standard failed */
-        float fine_vf_freq = dominant_freq;
-        if (fine_vf_freq == 0.0f) {
-            /* Try with lower dominance threshold for fine VF */
-            fine_vf_freq = find_dominant_frequency(signal, num_samples,
-                                                    sample_rate, 0.30f);
-        }
+    /* Irregularity contribution */
+    if (qrs_absent) {
+        evidence_score += VF_EV_QRS_ABSENT;
+    } else if (zcr > 0.25f || tcr > 0.5f) {
+        evidence_score += VF_EV_HIGH_IRREG;
+    } else if (zcr > 0.15f || tcr > 0.3f) {
+        evidence_score += VF_EV_MOD_IRREG;
+    }
 
-        uint8_t fine_freq_criterion = (fine_vf_freq >= config->vf_freq_min &&
-                                       fine_vf_freq <= config->vf_freq_max) ? 1 : 0;
+    /* Entropy contribution */
+    if (spectral_entropy > 0.6f) {
+        evidence_score += VF_EV_ENTROPY_HIGH;
+    } else if (spectral_entropy > 0.4f) {
+        evidence_score += VF_EV_ENTROPY_MOD;
+    }
 
-        /* For fine VF, threshold crossing rate is more reliable than ZCR */
-        uint8_t fine_irregularity = (tcr > config->vf_zcr_threshold * 1.5f) ? 1 : 0;
+    /* Organized rhythm penalties */
+    if (is_organized_tachy) {
+        evidence_score += VF_EV_ORGANIZED_PENALTY;
+    } else if (qrs_rate > 0.8f) {
+        evidence_score += VF_EV_QRS_PRESENT_PENALTY;
+    }
 
-        if (fine_freq_criterion && fine_irregularity) {
-            result->vf_detected = 1;
-            result->is_fine_vf = 1;
-            result->dominant_freq = fine_vf_freq;
+    /* Detection decision based on evidence threshold */
+    /* Require minimum amplitude above noise floor to avoid false positives */
+    if (evidence_score >= config->vf_evidence_threshold && amplitude > adaptive_threshold) {
+        result->vf_detected = 1;
+        result->is_fine_vf = (amplitude <= config->vf_fine_amplitude_max) ? 1 : 0;
 
-            /* Fine VF: log-odds calculation with penalty */
-            float log_odds = 0.0f;  /* Prior: 50% */
+        /* Confidence based on margin above threshold using tanh scaling */
+        float margin = evidence_score - config->vf_evidence_threshold;
+        result->confidence = 0.5f + 0.5f * tanhf(margin / 2.0f);  /* 0.5-1.0 range */
 
-            /* Frequency contribution */
-            if (fine_vf_freq >= 5.0f && fine_vf_freq <= 8.0f) {
-                log_odds += LR_VF_FREQ_OPTIMAL_POS;
-            } else {
-                log_odds += LR_VF_FREQ_BASIC_POS;
-            }
+        /* Scale by signal quality */
+        float signal_quality = estimate_signal_quality(signal, num_samples, (float)sample_rate);
+        result->confidence *= signal_quality;
 
-            /* Fine VF penalty (lower certainty due to low amplitude) */
-            log_odds += LR_VF_FINE_PENALTY;
-
-            /* Spectral entropy contribution - use 0.40 threshold for consistency */
-            log_odds += (spectral_entropy > 0.40f) ? LR_VF_ENTROPY_HIGH_POS : LR_VF_ENTROPY_HIGH_NEG;
-
-            /* Convert to probability and scale by signal quality */
-            float signal_quality = estimate_signal_quality(signal, num_samples, (float)sample_rate);
-            result->confidence = log_odds_to_probability(log_odds) * signal_quality;
-            return EKG_SUCCESS;
-        }
+        return EKG_SUCCESS;
     }
 
     /* No VF detected */
