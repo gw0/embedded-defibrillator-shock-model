@@ -76,6 +76,18 @@ typedef struct {
     metrics_t other_nonshockable;
 } eval_result_t;
 
+/* Failure breakdown tracking - compile with -DDIAG_ENABLED to enable */
+#ifdef DIAG_ENABLED
+typedef struct {
+    uint32_t diag_amplitude_fails;
+    uint32_t diag_frequency_fails;
+    uint32_t diag_irregularity_fails;
+    uint32_t diag_organized_fails;
+    uint32_t diag_confidence_fails;
+    uint32_t diag_total_fn;
+} diag_fail_breakdown_t;
+#endif
+
 /* ========================================
  * Function Prototypes
  * ======================================== */
@@ -94,5 +106,10 @@ void calculate_metrics(metrics_t *metrics);
 void print_metrics(const metrics_t *metrics);
 void print_result(const eval_result_t *result);
 void print_config_params(const ekg_config_t *config);
+
+/* Diagnostic functions - compile with -DDIAG_ENABLED to enable */
+#ifdef DIAG_ENABLED
+void diag_print_fail_breakdown(const diag_fail_breakdown_t *failures);
+#endif
 
 #endif /* EVAL_UTILS_H */

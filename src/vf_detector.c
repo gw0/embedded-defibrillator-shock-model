@@ -452,6 +452,10 @@ int detect_vf(const float *signal, uint16_t num_samples,
 
     /* Weighted evidence scoring - each criterion contributes to cumulative score */
 
+#ifdef DIAG_ENABLED
+    result->diag_fail_reason = DIAG_FAIL_NONE;
+#endif
+
     float evidence_score = 0.0f;
 
     /* Amplitude contribution (soft threshold) */
@@ -518,5 +522,20 @@ int detect_vf(const float *signal, uint16_t num_samples,
     /* No VF detected */
     result->vf_detected = 0;
     result->confidence = 0.0f;
+
+#ifdef DIAG_ENABLED
+    /* Track which criteria contributed below "good" levels */
+    if (amplitude <= 200.0f)  /* < VF_EV_AMP_MEDIUM */
+        result->diag_fail_reason |= DIAG_FAIL_AMPLITUDE;
+    if (dominant_freq < 5.0f || dominant_freq > 8.0f)  /* < VF_EV_FREQ_OPTIMAL */
+        result->diag_fail_reason |= DIAG_FAIL_FREQUENCY;
+    if (!qrs_absent && zcr <= 0.25f && tcr <= 0.5f)  /* < VF_EV_HIGH_IRREG */
+        result->diag_fail_reason |= DIAG_FAIL_IRREGULARITY;
+    if (is_organized_tachy)
+        result->diag_fail_reason |= DIAG_FAIL_ORGANIZED;
+    if (evidence_score >= config->vf_evidence_threshold - 1.0f)
+        result->diag_fail_reason |= DIAG_FAIL_CONFIDENCE;
+#endif
+
     return EKG_SUCCESS;
 }

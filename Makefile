@@ -149,21 +149,47 @@ ekg_eval: $(EVAL_TOOL_TARGET)
 $(EVAL_TOOL_TARGET): $(EVAL_TOOL_SOURCE) $(HOST_OBJECTS) $(CSV_UTILS_OBJECT) $(EVAL_UTILS_OBJECT) | $(BIN_DIR)
 	$(HOST_CC) $(HOST_CFLAGS) $(EVAL_TOOL_SOURCE) $(HOST_OBJECTS) $(CSV_UTILS_OBJECT) $(EVAL_UTILS_OBJECT) -o $@ -lm
 
+# Diagnostic Evaluation Tool (with failure breakdown)
+EVAL_DIAG_TARGET = $(BIN_DIR)/ekg_eval_diag
+HOST_DIAG_OBJ_DIR = $(OBJ_DIR)/host_diag
+HOST_DIAG_OBJECTS = $(SOURCES:$(SRC_DIR)/%.c=$(HOST_DIAG_OBJ_DIR)/%.o)
+EVAL_UTILS_DIAG_OBJECT = $(HOST_DIAG_OBJ_DIR)/eval_utils.o
+CSV_UTILS_DIAG_OBJECT = $(HOST_DIAG_OBJ_DIR)/csv_utils.o
+
+$(HOST_DIAG_OBJ_DIR):
+	mkdir -p $(HOST_DIAG_OBJ_DIR)
+
+$(HOST_DIAG_OBJ_DIR)/%.o: $(SRC_DIR)/%.c | $(HOST_DIAG_OBJ_DIR)
+	$(HOST_CC) $(HOST_CFLAGS) -DDIAG_ENABLED -c $< -o $@
+
+$(EVAL_UTILS_DIAG_OBJECT): $(EVAL_UTILS_SOURCE) | $(HOST_DIAG_OBJ_DIR)
+	$(HOST_CC) $(HOST_CFLAGS) -DDIAG_ENABLED -c $< -o $@
+
+$(CSV_UTILS_DIAG_OBJECT): $(CSV_UTILS_SOURCE) | $(HOST_DIAG_OBJ_DIR)
+	$(HOST_CC) $(HOST_CFLAGS) -DDIAG_ENABLED -c $< -o $@
+
+.PHONY: ekg_eval_diag
+ekg_eval_diag: $(EVAL_DIAG_TARGET)
+
+$(EVAL_DIAG_TARGET): $(EVAL_TOOL_SOURCE) $(HOST_DIAG_OBJECTS) $(CSV_UTILS_DIAG_OBJECT) $(EVAL_UTILS_DIAG_OBJECT) | $(BIN_DIR)
+	$(HOST_CC) $(HOST_CFLAGS) -DDIAG_ENABLED $(EVAL_TOOL_SOURCE) $(HOST_DIAG_OBJECTS) $(CSV_UTILS_DIAG_OBJECT) $(EVAL_UTILS_DIAG_OBJECT) -o $@ -lm
+
 # Show help
 .PHONY: help
 help:
 	@echo "EKG Signal Analyzer - Build System"
 	@echo ""
 	@echo "Targets:"
-	@echo "  all (default) - Build for host system (testing/development)"
-	@echo "  host          - Build for host system"
-	@echo "  arm           - Build for ARM Cortex-M33"
-	@echo "  test          - Build and run verification tests"
-	@echo "  ekg_csv       - Build CSV analyzer tool"
-	@echo "  ekg_train     - Build training/optimization tool"
-	@echo "  ekg_eval      - Build evaluation tool"
-	@echo "  clean         - Remove build artifacts"
-	@echo "  help          - Show this help message"
+	@echo "  all (default)  - Build for host system (testing/development)"
+	@echo "  host           - Build for host system"
+	@echo "  arm            - Build for ARM Cortex-M33"
+	@echo "  test           - Build and run verification tests"
+	@echo "  ekg_csv        - Build CSV analyzer tool"
+	@echo "  ekg_train      - Build training/optimization tool"
+	@echo "  ekg_eval       - Build evaluation tool"
+	@echo "  ekg_eval_diag  - Build evaluation tool with failure diagnostics"
+	@echo "  clean          - Remove build artifacts"
+	@echo "  help           - Show this help message"
 	@echo ""
 	@echo "Output:"
 	@echo "  Host:       $(HOST_TARGET) (static library)"
@@ -172,3 +198,4 @@ help:
 	@echo "  CSV Tool:   $(CSV_TOOL_TARGET)"
 	@echo "  Train Tool: $(TRAIN_TOOL_TARGET)"
 	@echo "  Eval Tool:  $(EVAL_TOOL_TARGET)"
+	@echo "  Eval Diag:  $(EVAL_DIAG_TARGET)"

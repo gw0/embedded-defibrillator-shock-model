@@ -18,6 +18,9 @@
 #include "eval_utils.h"
 #include "csv_utils.h"
 #include "../src/ekg_analyzer.h"
+#ifdef DIAG_ENABLED
+#include "../src/vf_detector.h"
+#endif
 
 /* Internal constants */
 #define MAX_FILES 15000
@@ -212,6 +215,11 @@ void calculate_metrics(metrics_t *metrics)
     }
 }
 
+/* Diagnostic tracking - file scope for simplicity */
+#ifdef DIAG_ENABLED
+static diag_fail_breakdown_t g_diag_fails;
+#endif
+
 /* Evaluate configuration with per-rhythm breakdown */
 void evaluate_config(const ekg_config_t *config, const dataset_t *dataset,
                     const uint32_t *file_indices, uint32_t num_files,
@@ -224,6 +232,9 @@ void evaluate_config(const ekg_config_t *config, const dataset_t *dataset,
 
     /* Reset result */
     memset(result, 0, sizeof(eval_result_t));
+#ifdef DIAG_ENABLED
+    memset(&g_diag_fails, 0, sizeof(g_diag_fails));
+#endif
 
     /* Allocate buffers */
     raw_samples = (int16_t *)malloc(MAX_SAMPLES * sizeof(int16_t));
@@ -277,6 +288,9 @@ void evaluate_config(const ekg_config_t *config, const dataset_t *dataset,
 
         /* Any-positive aggregation: file classified as SHOCK if ANY window advises shock */
         uint8_t file_shock_advised = 0;
+#ifdef DIAG_ENABLED
+        uint8_t file_fail_reason = 0;
+#endif
 
         /* Analyze each window */
         for (int w = 0; w < num_windows; w++) {
@@ -288,18 +302,25 @@ void evaluate_config(const ekg_config_t *config, const dataset_t *dataset,
             }
 
             /* Analyze this window */
-            ekg_analysis_result_t result;
-            int ret = ekg_analyze(&samples[window_offset], WINDOW_SIZE, &result, config);
+            ekg_analysis_result_t analysis;
+            int ret = ekg_analyze(&samples[window_offset], WINDOW_SIZE, &analysis, config);
 
             if (ret != EKG_SUCCESS) {
                 continue;
             }
 
             /* Any-positive: if any window advises shock, mark file as shock */
-            if (result.shock_advised) {
+            if (analysis.shock_advised) {
                 file_shock_advised = 1;
-                break;  /* Early exit optimization */
+                break;
             }
+
+#ifdef DIAG_ENABLED
+            /* Track failure reasons for shockable rhythms that were missed */
+            if (file->ground_truth_shock && !analysis.shock_advised) {
+                file_fail_reason |= analysis.diag_fail_reason;
+            }
+#endif
         }
 
         /* Update overall confusion matrix */
@@ -307,6 +328,18 @@ void evaluate_config(const ekg_config_t *config, const dataset_t *dataset,
         result->overall.tn += (!file_shock_advised && !file->ground_truth_shock);
         result->overall.fp += (file_shock_advised && !file->ground_truth_shock);
         result->overall.fn += (!file_shock_advised && file->ground_truth_shock);
+
+#ifdef DIAG_ENABLED
+        /* Track failure reasons for false negatives */
+        if (!file_shock_advised && file->ground_truth_shock) {
+            g_diag_fails.diag_total_fn++;
+            if (file_fail_reason & DIAG_FAIL_AMPLITUDE) g_diag_fails.diag_amplitude_fails++;
+            if (file_fail_reason & DIAG_FAIL_FREQUENCY) g_diag_fails.diag_frequency_fails++;
+            if (file_fail_reason & DIAG_FAIL_IRREGULARITY) g_diag_fails.diag_irregularity_fails++;
+            if (file_fail_reason & DIAG_FAIL_ORGANIZED) g_diag_fails.diag_organized_fails++;
+            if (file_fail_reason & DIAG_FAIL_CONFIDENCE) g_diag_fails.diag_confidence_fails++;
+        }
+#endif
 
         /* Update per-rhythm metrics based on rhythm type */
         metrics_t *rhythm_metric = NULL;
@@ -335,16 +368,11 @@ void evaluate_config(const ekg_config_t *config, const dataset_t *dataset,
                 rhythm_metric = &result->cndwave;
                 break;
             default:
-                /* Unknown rhythm - use other_shockable or other_nonshockable */
                 rhythm_metric = is_shockable ?
                     &result->other_shockable : &result->other_nonshockable;
                 break;
         }
 
-        /*
-         * Update per-rhythm confusion matrix. Due to fixed ground truths,
-         * shockable rhythms only accumulate TP/FN, non-shockable only TN/FP.
-         */
         rhythm_metric->tp += (file_shock_advised && is_shockable);
         rhythm_metric->tn += (!file_shock_advised && !is_shockable);
         rhythm_metric->fp += (file_shock_advised && !is_shockable);
@@ -451,6 +479,10 @@ void print_result(const eval_result_t *result)
                result->other_nonshockable.tn, result->other_nonshockable.fp,
                result->other_nonshockable.specificity * 100.0f);
     }
+
+#ifdef DIAG_ENABLED
+    diag_print_fail_breakdown(&g_diag_fails);
+#endif
 }
 
 /* Print configuration parameters */
@@ -471,4 +503,30 @@ void print_config_params(const ekg_config_t *config)
     printf("  VF_FINE_CONFIDENCE:   %.2f\n", config->vf_fine_confidence);
     printf("  VF_NOISE_FLOOR_MULT:  %.1f\n", config->vf_noise_floor_mult);
     printf("  VF_AMP_THRESH_RATIO:  %.2f\n", config->vf_amplitude_thresh_ratio);
+    printf("  VF_EVIDENCE_THRESH:   %.1f\n", config->vf_evidence_threshold);
 }
+
+/* ========================================
+ * Diagnostic Functions (DIAG_ENABLED)
+ * ======================================== */
+
+#ifdef DIAG_ENABLED
+
+void diag_print_fail_breakdown(const diag_fail_breakdown_t *fails)
+{
+    printf("\nFailure Breakdown (False Negatives: %u):\n", fails->diag_total_fn);
+    if (fails->diag_total_fn > 0) {
+        printf("  Amplitude:     %4u (%5.1f%%)\n", fails->diag_amplitude_fails,
+               100.0f * fails->diag_amplitude_fails / fails->diag_total_fn);
+        printf("  Frequency:     %4u (%5.1f%%)\n", fails->diag_frequency_fails,
+               100.0f * fails->diag_frequency_fails / fails->diag_total_fn);
+        printf("  Irregularity:  %4u (%5.1f%%)\n", fails->diag_irregularity_fails,
+               100.0f * fails->diag_irregularity_fails / fails->diag_total_fn);
+        printf("  Organized:     %4u (%5.1f%%)\n", fails->diag_organized_fails,
+               100.0f * fails->diag_organized_fails / fails->diag_total_fn);
+        printf("  Confidence:    %4u (%5.1f%%)\n", fails->diag_confidence_fails,
+               100.0f * fails->diag_confidence_fails / fails->diag_total_fn);
+    }
+}
+
+#endif /* DIAG_ENABLED */

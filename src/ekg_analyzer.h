@@ -28,6 +28,9 @@ typedef struct {
     uint16_t heart_rate;       /* Beats per minute (0 if not detectable) */
     float dominant_freq;       /* Dominant frequency in Hz (for VF) */
     uint8_t num_qrs_detected;  /* Number of QRS complexes found */
+#ifdef DIAG_ENABLED
+    uint8_t diag_fail_reason;  /* Bitmask of DIAG_FAIL_* flags */
+#endif
 } ekg_analysis_result_t;
 
 /**

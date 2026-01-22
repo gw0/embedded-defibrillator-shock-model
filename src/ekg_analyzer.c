@@ -108,6 +108,10 @@ int ekg_analyze(const int16_t *samples,
     vf_detection_result_t vf_result;
     detect_vf(signal, num_samples, &qrs_result, EKG_SAMPLE_RATE, config, &vf_result);
 
+#ifdef DIAG_ENABLED
+    result->diag_fail_reason = vf_result.diag_fail_reason;
+#endif
+
     /* Step 5: Decision Logic */
 
     /*

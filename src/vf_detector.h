@@ -13,6 +13,16 @@
 #include "qrs_detector.h"
 #include "ekg_config.h"
 
+/* Failure reason codes - compile with -DDIAG_ENABLED to enable */
+#ifdef DIAG_ENABLED
+#define DIAG_FAIL_NONE             0x00
+#define DIAG_FAIL_AMPLITUDE        0x01
+#define DIAG_FAIL_FREQUENCY        0x02
+#define DIAG_FAIL_IRREGULARITY     0x04
+#define DIAG_FAIL_ORGANIZED        0x08
+#define DIAG_FAIL_CONFIDENCE       0x10
+#endif
+
 /**
  * VF Detection Result Structure
  *
@@ -29,6 +39,9 @@ typedef struct {
     float noise_floor;        /* Estimated noise floor */
     float adaptive_threshold; /* Computed adaptive amplitude threshold */
     uint8_t qrs_absent;       /* 1 if no QRS detected */
+#ifdef DIAG_ENABLED
+    uint8_t diag_fail_reason; /* Bitfield of DIAG_FAIL_* codes */
+#endif
 } vf_detection_result_t;
 
 /**
