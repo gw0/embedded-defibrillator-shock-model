@@ -39,23 +39,23 @@
 #define VT_HR_THRESHOLD       120.0f  /* bpm */
 #define VT_QRS_WIDTH_MS       100.0f  /* ms */
 #define VT_QRS_WIDTH_SAMPLES  (VT_QRS_WIDTH_MS * EKG_SAMPLE_RATE / 1000.0f)  /* 10 */
-#define VT_REGULARITY_CV      25.0f   /* percent */
+#define VT_REGULARITY_CV      30.0f   /* percent */
 #define VT_MIN_CONSECUTIVE    3       /* Minimum consecutive wide QRS */
 #define VT_CONFIDENCE_THRESHOLD 0.70f  /* Confidence threshold for VT */
 
 /* VF Detection */
 #define VF_FREQ_MIN           3.0f    /* Hz - extended for slow VF */
-#define VF_FREQ_MAX           10.5f   /* Hz - extended for fast VF */
+#define VF_FREQ_MAX           9.5f   /* Hz - extended for fast VF */
 #define VF_ZCR_THRESHOLD      0.25f   /* Zero-crossing rate threshold */
-#define VF_MIN_AMPLITUDE      200.0f   /* Minimum amplitude - lowered to catch more VF */
 #define VF_QRS_RATE_THRESHOLD 0.5f    /* QRS per second (below = absent) */
-#define VF_CONFIDENCE_THRESHOLD 0.70f  /* Confidence threshold - lowered for sensitivity */
-#define VF_DOMINANCE_THRESHOLD 0.45f  /* VF is chaotic - no single freq dominates */
-#define VF_FINE_AMPLITUDE_MAX 300.0f  /* Extended fine VF detection window */
+#define VF_CONFIDENCE_THRESHOLD 0.50f  /* Confidence threshold - lowered for sensitivity */
+#define VF_MIN_AMPLITUDE      200.0f   /* Minimum amplitude - lowered to catch more VF */
+#define VF_DOMINANCE_THRESHOLD 0.50f  /* VF is chaotic - no single freq dominates */
+#define VF_FINE_AMPLITUDE_MAX 150.0f  /* Extended fine VF detection window */
 #define VF_FINE_CONFIDENCE    0.60f   /* Lower confidence for fine VF detection */
-#define VF_NOISE_FLOOR_MULT   3.0f    /* VF threshold = noise_floor * this multiplier */
-#define VF_AMPLITUDE_THRESHOLD_RATIO 0.10f  /* 10% of peak for threshold crossings */
-#define VF_EVIDENCE_THRESHOLD 4.0f    /* Minimum evidence score for VF detection */
+#define VF_NOISE_FLOOR_MULT   3.5f    /* VF threshold = noise_floor * this multiplier */
+#define VF_AMPLITUDE_THRESHOLD_RATIO 0.05f  /* 10% of peak for threshold crossings */
+#define VF_EVIDENCE_THRESHOLD 3.0f    /* Minimum evidence score for VF detection */
 
 /* Goertzel frequencies for VF detection - 0.5 Hz resolution, extended range 2.5-12 Hz */
 #define VF_NUM_TEST_FREQS     20
