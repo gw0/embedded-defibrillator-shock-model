@@ -44,23 +44,23 @@
 #define VT_CONFIDENCE_THRESHOLD 0.80f  /* Confidence threshold for VT */
 
 /* VF Detection */
-#define VF_FREQ_MIN           3.5f    /* Hz */
-#define VF_FREQ_MAX           10.5f   /* Hz */
+#define VF_FREQ_MIN           2.5f    /* Hz - extended for slow VF */
+#define VF_FREQ_MAX           12.0f   /* Hz - extended for fast VF */
 #define VF_ZCR_THRESHOLD      0.10f   /* Zero-crossing rate threshold */
-#define VF_MIN_AMPLITUDE      100.0f  /* Minimum amplitude (not asystole) */
+#define VF_MIN_AMPLITUDE      50.0f   /* Minimum amplitude - lowered to catch more VF */
 #define VF_QRS_RATE_THRESHOLD 0.5f    /* QRS per second (below = absent) */
-#define VF_CONFIDENCE_THRESHOLD 0.90f  /* Confidence threshold for VF */
-#define VF_DOMINANCE_THRESHOLD 0.40f  /* Dominant freq must be >40% of band power (was 60%) */
-#define VF_FINE_AMPLITUDE_MAX 200.0f  /* Fine VF has lower amplitude */
+#define VF_CONFIDENCE_THRESHOLD 0.70f  /* Confidence threshold - lowered for sensitivity */
+#define VF_DOMINANCE_THRESHOLD 0.25f  /* VF is chaotic - no single freq dominates */
+#define VF_FINE_AMPLITUDE_MAX 300.0f  /* Extended fine VF detection window */
 #define VF_FINE_CONFIDENCE    0.70f   /* Lower confidence for fine VF detection */
 #define VF_NOISE_FLOOR_MULT   3.0f    /* VF threshold = noise_floor * this multiplier */
 #define VF_AMPLITUDE_THRESHOLD_RATIO 0.10f  /* 10% of peak for threshold crossings */
 
-/* Goertzel frequencies for VF detection - 0.5 Hz resolution for better spectral analysis */
-#define VF_NUM_TEST_FREQS     15
+/* Goertzel frequencies for VF detection - 0.5 Hz resolution, extended range 2.5-12 Hz */
+#define VF_NUM_TEST_FREQS     20
 static const float VF_TEST_FREQS[VF_NUM_TEST_FREQS] = {
-    3.5f, 4.0f, 4.5f, 5.0f, 5.5f, 6.0f, 6.5f,
-    7.0f, 7.5f, 8.0f, 8.5f, 9.0f, 9.5f, 10.0f, 10.5f
+    2.5f, 3.0f, 3.5f, 4.0f, 4.5f, 5.0f, 5.5f, 6.0f, 6.5f, 7.0f,
+    7.5f, 8.0f, 8.5f, 9.0f, 9.5f, 10.0f, 10.5f, 11.0f, 11.5f, 12.0f
 };
 
 /* Bandpass filter coefficients (5-18 Hz at 100 Hz sample rate) */
@@ -143,17 +143,19 @@ static const ekg_config_t EKG_DEFAULT_CONFIG = {
 /* LR+ when feature present, LR- when absent (in log space) */
 
 /* VF detection log-LRs */
-#define LR_VF_FREQ_BASIC_POS      1.10f   /* freq 3-12 Hz */
-#define LR_VF_FREQ_BASIC_NEG     -1.61f
+#define LR_VF_FREQ_BASIC_POS      1.40f   /* freq in VF range - boosted for sensitivity */
+#define LR_VF_FREQ_BASIC_NEG     -1.20f   /* reduced penalty for edge frequencies */
 #define LR_VF_FREQ_OPTIMAL_POS    1.61f   /* freq 5-8 Hz */
 #define LR_VF_FREQ_OPTIMAL_NEG   -0.69f
 #define LR_VF_ZCR_HIGH_POS        0.92f
 #define LR_VF_ZCR_HIGH_NEG       -0.92f
 #define LR_VF_TCR_HIGH_POS        0.69f
 #define LR_VF_TCR_HIGH_NEG       -0.69f
-#define LR_VF_QRS_ABSENT_POS      1.39f
+#define LR_VF_QRS_ABSENT_POS      1.60f   /* stronger evidence when no QRS */
 #define LR_VF_QRS_ABSENT_NEG     -2.30f
-#define LR_VF_FINE_PENALTY       -0.50f   /* penalty for fine VF */
+#define LR_VF_FINE_PENALTY       -0.20f   /* reduced penalty for fine VF */
+#define LR_VF_ENTROPY_HIGH_POS    0.80f   /* high spectral entropy (chaotic) */
+#define LR_VF_ENTROPY_HIGH_NEG   -0.60f   /* low entropy (organized rhythm) */
 
 /* VT detection log-LRs */
 #define LR_VT_HR_THRESH_POS       1.10f

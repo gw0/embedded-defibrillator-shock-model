@@ -18,6 +18,22 @@
 #define TEST_SAMPLES 500
 #define SAMPLE_RATE 100
 
+/* Test result tracking */
+static int tests_passed = 0;
+static int tests_failed = 0;
+
+/* Test helper */
+void run_test(const char *name, int passed)
+{
+    if (passed) {
+        printf("  [PASS] %s\n", name);
+        tests_passed++;
+    } else {
+        printf("  [FAIL] %s\n", name);
+        tests_failed++;
+    }
+}
+
 /* Generate a sine wave */
 void generate_sine(float *output, uint16_t num_samples, float freq, float amplitude, float offset)
 {
@@ -67,9 +83,9 @@ void test_dc_offset_removal(void)
     /* Calculate mean of output (should be close to 0) */
     float mean_after = calculate_mean(output, TEST_SAMPLES);
 
-    printf("Input DC offset: %.2f\n", dc_offset);
-    printf("Output mean: %.6f (should be ~0)\n", mean_after);
-    printf("Test %s\n", (fabsf(mean_after) < 0.1f) ? "PASSED" : "FAILED");
+    printf("  Input DC offset: %.2f\n", dc_offset);
+    printf("  Output mean: %.6f (should be ~0)\n", mean_after);
+    run_test("DC offset removed (mean < 0.1)", fabsf(mean_after) < 0.1f);
 }
 
 /* Test 2: Bandpass Filter */
@@ -105,16 +121,21 @@ void test_bandpass_filter(void)
         /* Calculate attenuation/gain */
         float gain_db = 20.0f * log10f(output_rms / input_rms);
 
-        printf("%s:\n", freq_names[t]);
-        printf("  Input RMS:  %.2f\n", input_rms);
-        printf("  Output RMS: %.2f\n", output_rms);
-        printf("  Gain:       %.2f dB\n", gain_db);
+        printf("  %s: Input RMS=%.2f, Output RMS=%.2f, Gain=%.2f dB\n",
+               freq_names[t], input_rms, output_rms, gain_db);
 
         /* Expected behavior:
          * - 1 Hz should be attenuated (gain << 0 dB)
          * - 10 Hz should pass with minimal attenuation (gain ~ 0 dB)
          * - 30 Hz should be attenuated (gain << 0 dB)
          */
+        if (t == 0) {
+            run_test("1 Hz attenuated (gain < -3 dB)", gain_db < -3.0f);
+        } else if (t == 1) {
+            run_test("10 Hz passes (gain > -6 dB)", gain_db > -6.0f);
+        } else {
+            run_test("30 Hz attenuated (gain < -3 dB)", gain_db < -3.0f);
+        }
     }
 }
 
@@ -145,14 +166,15 @@ void test_moving_average(void)
     }
     noise_rms = sqrtf(noise_rms / (float)(TEST_SAMPLES - 100));
 
-    printf("Window size: %d samples\n", window_size);
-    printf("Noise reduction RMS: %.2f\n", noise_rms);
-    printf("Test %s (smoothing applied)\n", (noise_rms > 10.0f) ? "PASSED" : "WARNING");
+    printf("  Window size: %d samples\n", window_size);
+    printf("  Noise reduction RMS: %.2f\n", noise_rms);
+    run_test("Smoothing applied (noise RMS > 10)", noise_rms > 10.0f);
 }
 
 int main(void)
 {
     printf("Signal Processing Module - Verification Tests\n");
+    printf("==============================================\n");
     printf("Sample rate: %d Hz\n", SAMPLE_RATE);
     printf("Test samples: %d\n", TEST_SAMPLES);
 
@@ -160,7 +182,13 @@ int main(void)
     test_bandpass_filter();
     test_moving_average();
 
-    printf("\n=== All tests complete ===\n");
+    /* Summary */
+    printf("\n==============================================\n");
+    printf("Test Summary:\n");
+    printf("  Passed: %d\n", tests_passed);
+    printf("  Failed: %d\n", tests_failed);
+    printf("  Total:  %d\n", tests_passed + tests_failed);
+    printf("==============================================\n");
 
-    return 0;
+    return (tests_failed == 0) ? 0 : 1;
 }

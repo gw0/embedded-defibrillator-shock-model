@@ -33,7 +33,10 @@ void generate_coarse_vf(float *signal, uint16_t num_samples, float amplitude)
         /* Amplitude modulation for chaotic appearance */
         float amp_mod = 0.8f + 0.2f * sinf(2.0f * PI * 0.5f * t);
 
-        signal[i] = (vf1 + vf2 + vf3 + vf4) * amp_mod;
+        /* Add broadband noise for realistic spectral entropy (real VF is chaotic) */
+        float noise = ((float)(rand() % 1000) - 500.0f) / 500.0f * amplitude * 0.15f;
+
+        signal[i] = (vf1 + vf2 + vf3 + vf4) * amp_mod + noise;
     }
 }
 
@@ -52,7 +55,10 @@ void generate_fine_vf(float *signal, uint16_t num_samples, float amplitude)
         /* More irregular amplitude modulation */
         float amp_mod = 0.7f + 0.3f * sinf(2.0f * PI * 0.8f * t + sinf(2.0f * PI * 0.3f * t));
 
-        signal[i] = (vf1 + vf2 + vf3 + vf4) * amp_mod;
+        /* Add broadband noise for realistic spectral entropy */
+        float noise = ((float)(rand() % 1000) - 500.0f) / 500.0f * amplitude * 0.20f;
+
+        signal[i] = (vf1 + vf2 + vf3 + vf4) * amp_mod + noise;
     }
 }
 
@@ -126,7 +132,7 @@ void test_coarse_vf_detection(void)
     run_test("VF detected", vf_result.vf_detected == 1);
     run_test("Not classified as fine VF", vf_result.is_fine_vf == 0);
     run_test("Dominant frequency in VF range",
-             vf_result.dominant_freq >= 3.5f && vf_result.dominant_freq <= 10.5f);
+             vf_result.dominant_freq >= VF_FREQ_MIN && vf_result.dominant_freq <= VF_FREQ_MAX);
     run_test("Confidence > 0.5", vf_result.confidence > 0.5f);
 
     printf("  Dominant freq: %.1f Hz, Confidence: %.2f\n",
@@ -237,7 +243,7 @@ void test_helper_functions(void)
 
     /* Test frequency detection with dominance threshold */
     float dom_freq = find_dominant_frequency(signal, TEST_SAMPLES, EKG_SAMPLE_RATE, 0.4f);
-    run_test("Dominant frequency in VF range", dom_freq >= 3.5f && dom_freq <= 10.5f);
+    run_test("Dominant frequency in VF range", dom_freq >= VF_FREQ_MIN && dom_freq <= VF_FREQ_MAX);
     printf("  Dominant frequency: %.1f Hz\n", dom_freq);
 }
 
