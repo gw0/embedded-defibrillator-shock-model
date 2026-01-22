@@ -83,9 +83,7 @@ void moving_window_integrate(const float *input, float *output,
         }
 
         /* Remove old sample leaving the window */
-        if (i > 0) {
-            sum -= input[i - 1];
-        }
+        sum -= input[i - 1];
 
         output[i] = sum / (float)window_size;
     }

@@ -93,7 +93,7 @@ void moving_average(const float *input, float *output,
     }
 
     /*
-     * Moving average filter with sliding window optimization
+     * Moving average filter
      * Window is centered on current sample
      */
 

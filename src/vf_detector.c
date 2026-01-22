@@ -493,14 +493,14 @@ int detect_vf(const float *signal, uint16_t num_samples,
      * VF Detection Strategy:
      *
      * 1. Standard VF Detection Path:
-     *    - Amplitude > min_amplitude (100)
+     *    - Amplitude > min_amplitude
      *    - Dominant frequency in VF range
      *    - High irregularity (ZCR or threshold crossing rate)
      *    - No organized QRS
      *
      * 2. Fine VF Detection Path (for low amplitude VF):
      *    - Amplitude > adaptive_threshold (noise_floor * 3)
-     *    - Amplitude < fine_amplitude_max (200)
+     *    - Amplitude < fine_amplitude_max
      *    - No QRS detected (must be truly absent)
      *    - Dominant frequency in VF band
      *    - High threshold crossing rate (noise-robust)

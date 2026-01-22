@@ -54,7 +54,7 @@
 #define VF_FINE_AMPLITUDE_MAX 250.0f  /* Extended fine VF detection window */
 #define VF_FINE_CONFIDENCE    0.60f   /* Lower confidence for fine VF detection */
 #define VF_NOISE_FLOOR_MULT   3.0f    /* VF threshold = noise_floor * this multiplier */
-#define VF_AMPLITUDE_THRESHOLD_RATIO 0.05f  /* 10% of peak for threshold crossings */
+#define VF_AMPLITUDE_THRESHOLD_RATIO 0.05f  /* Ratio of peak for threshold crossings */
 #define VF_EVIDENCE_THRESHOLD 3.0f    /* Minimum evidence score for VF detection */
 
 /* Goertzel frequencies for VF detection - 0.5 Hz resolution, extended range 2.5-12 Hz */
