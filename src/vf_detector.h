@@ -103,6 +103,33 @@ float calculate_threshold_crossing_rate(const float *signal, uint16_t num_sample
                                         uint16_t sample_rate, float threshold);
 
 /**
+ * Check for organized tachycardia (SVT or regular VT)
+ *
+ * SVT has regular QRS complexes with low variability.
+ * This helps prevent false positive VF detection.
+ *
+ * @param qrs_result   QRS detection results
+ * @param sample_rate  Sample rate in Hz
+ * @return             1 if organized tachycardia detected, 0 otherwise
+ */
+uint8_t check_organized_tachycardia(const qrs_detection_result_t *qrs_result,
+                                     uint16_t sample_rate);
+
+/**
+ * Calculate spectral entropy for rhythm characterization
+ *
+ * VF has high entropy (chaotic, broad spectrum).
+ * NSR/SVT has low entropy (organized, narrow peaks).
+ *
+ * @param signal       Input signal
+ * @param num_samples  Number of samples
+ * @param sample_rate  Sample rate in Hz
+ * @return             Spectral entropy (0.0-1.0, higher = more chaotic)
+ */
+float calculate_spectral_entropy(const float *signal, uint16_t num_samples,
+                                 uint16_t sample_rate);
+
+/**
  * Detect Ventricular Fibrillation
  *
  * @param signal       Original (DC-removed) EKG signal

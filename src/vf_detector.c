@@ -249,6 +249,105 @@ float calculate_threshold_crossing_rate(const float *signal, uint16_t num_sample
     return (float)crossings / duration_sec;
 }
 
+uint8_t check_organized_tachycardia(const qrs_detection_result_t *qrs_result,
+                                     uint16_t sample_rate)
+{
+    if (qrs_result == NULL || qrs_result->count < 4 || qrs_result->locations == NULL) {
+        return 0;  /* Need at least 4 QRS with valid locations to assess regularity */
+    }
+
+    /*
+     * SVT/Organized tachycardia characteristics:
+     * 1. Heart rate 120-220 bpm
+     * 2. Regular RR intervals (CV < 15%)
+     *
+     * VF should NOT be detected when these conditions are met.
+     */
+
+    /* Calculate RR intervals */
+    uint8_t num_intervals = qrs_result->count - 1;
+    float sum_rr = 0.0f;
+    float intervals[49];  /* Max QRS_MAX_DETECTIONS - 1 */
+
+    for (uint8_t i = 0; i < num_intervals && i < 49; i++) {
+        intervals[i] = (float)(qrs_result->locations[i + 1] - qrs_result->locations[i])
+                       / (float)sample_rate;
+        sum_rr += intervals[i];
+    }
+
+    float mean_rr = sum_rr / (float)num_intervals;
+
+    /* Calculate heart rate */
+    float heart_rate = 60.0f / mean_rr;
+
+    /* Must be in tachycardia range (120-220 bpm) */
+    if (heart_rate < 120.0f || heart_rate > 220.0f) {
+        return 0;
+    }
+
+    /* Calculate coefficient of variation */
+    float sum_sq_diff = 0.0f;
+    for (uint8_t i = 0; i < num_intervals && i < 49; i++) {
+        float diff = intervals[i] - mean_rr;
+        sum_sq_diff += diff * diff;
+    }
+    float std_dev = sqrtf(sum_sq_diff / (float)num_intervals);
+    float cv = (std_dev / mean_rr) * 100.0f;  /* Percent */
+
+    /* If CV < 15%, rhythm is organized (likely SVT, not VF) */
+    return (cv < 15.0f) ? 1 : 0;
+}
+
+float calculate_spectral_entropy(const float *signal, uint16_t num_samples,
+                                 uint16_t sample_rate)
+{
+    if (signal == NULL || num_samples == 0 || sample_rate == 0) {
+        return 0.0f;
+    }
+
+    /*
+     * Spectral entropy calculation:
+     * 1. Calculate power at each test frequency using Goertzel
+     * 2. Normalize powers to create probability distribution
+     * 3. Calculate Shannon entropy: H = -sum(p * log(p))
+     * 4. Normalize by max entropy (log(N)) to get 0-1 range
+     *
+     * High entropy = chaotic signal (VF)
+     * Low entropy = organized signal (NSR/SVT)
+     */
+
+    float powers[VF_NUM_TEST_FREQS];
+    float total_power = 0.0f;
+
+    /* Calculate power at each frequency */
+    for (uint8_t i = 0; i < VF_NUM_TEST_FREQS; i++) {
+        float mag = goertzel_magnitude(signal, num_samples,
+                                       VF_TEST_FREQS[i], sample_rate);
+        powers[i] = mag * mag;  /* Power = magnitude squared */
+        total_power += powers[i];
+    }
+
+    /* Avoid division by zero */
+    if (total_power < 1e-10f) {
+        return 0.0f;
+    }
+
+    /* Calculate Shannon entropy */
+    float entropy = 0.0f;
+    for (uint8_t i = 0; i < VF_NUM_TEST_FREQS; i++) {
+        float p = powers[i] / total_power;
+        if (p > 1e-10f) {
+            entropy -= p * logf(p);
+        }
+    }
+
+    /* Normalize by maximum entropy (uniform distribution) */
+    float max_entropy = logf((float)VF_NUM_TEST_FREQS);
+    float normalized_entropy = entropy / max_entropy;
+
+    return normalized_entropy;
+}
+
 int detect_vf(const float *signal, uint16_t num_samples,
              const qrs_detection_result_t *qrs_result,
              uint16_t sample_rate,
@@ -344,11 +443,20 @@ int detect_vf(const float *signal, uint16_t num_samples,
      */
 
     /*
+     * Check for organized tachycardia (SVT discrimination)
+     * If rhythm is regular with tachycardia, it's likely SVT not VF
+     */
+    uint8_t is_organized_tachy = check_organized_tachycardia(qrs_result, sample_rate);
+
+    /*
      * Check if rhythm is organized (likely VT or NSR, not VF)
      * If we detect more than ~0.5 QRS per second, rhythm is organized
      * VF should have very few or no detectable QRS complexes
      */
-    uint8_t not_organized = (qrs_rate < 0.6f) ? 1 : 0;
+    uint8_t not_organized = (qrs_rate < 0.6f && !is_organized_tachy) ? 1 : 0;
+
+    /* Calculate spectral entropy for VF/organized rhythm discrimination */
+    float spectral_entropy = calculate_spectral_entropy(signal, num_samples, sample_rate);
 
     /* Standard VF Detection Path */
     if (amplitude > min_amplitude) {
@@ -361,7 +469,12 @@ int detect_vf(const float *signal, uint16_t num_samples,
                                           tcr > config->vf_zcr_threshold * 2.0f ||
                                           qrs_absent == 1) ? 1 : 0;
 
-        /* VF detected if ALL criteria met */
+        /* Criterion: High spectral entropy (chaotic signal) - used as supporting evidence
+         * Threshold 0.40 allows detection while still filtering organized rhythms */
+        uint8_t entropy_supports_vf = (spectral_entropy > 0.40f) ? 1 : 0;
+
+        /* VF detected if freq + irregularity + not_organized criteria met
+         * Entropy is used as additional confidence boost but not required */
         if (freq_criterion && irregularity_criterion && not_organized) {
             result->vf_detected = 1;
             result->is_fine_vf = 0;
@@ -386,6 +499,9 @@ int detect_vf(const float *signal, uint16_t num_samples,
 
             /* QRS absence contribution */
             log_odds += (qrs_absent == 1) ? LR_VF_QRS_ABSENT_POS : LR_VF_QRS_ABSENT_NEG;
+
+            /* Spectral entropy contribution - use the computed variable */
+            log_odds += entropy_supports_vf ? LR_VF_ENTROPY_HIGH_POS : LR_VF_ENTROPY_HIGH_NEG;
 
             /* Convert to probability and scale by signal quality */
             float signal_quality = estimate_signal_quality(signal, num_samples, (float)sample_rate);
@@ -441,6 +557,9 @@ int detect_vf(const float *signal, uint16_t num_samples,
 
             /* Fine VF penalty (lower certainty due to low amplitude) */
             log_odds += LR_VF_FINE_PENALTY;
+
+            /* Spectral entropy contribution - use 0.40 threshold for consistency */
+            log_odds += (spectral_entropy > 0.40f) ? LR_VF_ENTROPY_HIGH_POS : LR_VF_ENTROPY_HIGH_NEG;
 
             /* Convert to probability and scale by signal quality */
             float signal_quality = estimate_signal_quality(signal, num_samples, (float)sample_rate);
