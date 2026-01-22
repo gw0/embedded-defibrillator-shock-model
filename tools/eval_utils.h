@@ -59,6 +59,7 @@ typedef struct {
     float specificity;
     float precision;
     float f1_score;
+    float f2_score;   /* F-beta with beta=2, weights sensitivity 4x over precision */
 } metrics_t;
 
 /* Evaluation result with per-rhythm breakdown */

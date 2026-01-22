@@ -215,10 +215,15 @@ int main(int argc, char *argv[])
     ekg_config_t baseline = EKG_DEFAULT_CONFIG;
     eval_result_t baseline_result;
     evaluate_config(&baseline, &dataset, NULL, dataset.count, &baseline_result, source_sample_rate);
-    printf("\nBaseline F1=%.4f, Search best F1=%.4f\n",
-           baseline_result.overall.f1_score, progress.best_metrics.f1_score);
+    float f2_delta = progress.best_metrics.f2_score - baseline_result.overall.f2_score;
+    printf("\nBaseline: F2=%.4f, F1=%.4f, Sens=%.4f, Spec=%.4f\n",
+           baseline_result.overall.f2_score, baseline_result.overall.f1_score,
+           baseline_result.overall.sensitivity, baseline_result.overall.specificity);
+    printf("Search:   F2=%.4f, F1=%.4f, Sens=%.4f, Spec=%.4f  (F2 %+.4f)\n",
+           progress.best_metrics.f2_score, progress.best_metrics.f1_score,
+           progress.best_metrics.sensitivity, progress.best_metrics.specificity, f2_delta);
 
-    if (progress.best_metrics.f1_score <= baseline_result.overall.f1_score) {
+    if (progress.best_metrics.f2_score <= baseline_result.overall.f2_score) {
         printf("Search did not improve upon baseline. Keeping current config.\n");
         progress.best_config = baseline;
         progress.best_metrics = baseline_result.overall;
@@ -294,11 +299,11 @@ static void init_default_grid(param_grid_t *grid)
         grid->vt_conf_values[i] = 0.5f + i * 0.1f;
     }
 
-    /* VF_FREQ_MIN: 3.5-5.0 step 0.5 (4 values) */
-    grid->vf_fmin_count = 4;
+    /* VF_FREQ_MIN: 2.5-5.0 step 0.5 (6 values) - extended for slow VF */
+    grid->vf_fmin_count = 6;
     grid->vf_fmin_values = malloc(grid->vf_fmin_count * sizeof(float));
     for (uint32_t i = 0; i < grid->vf_fmin_count; i++) {
-        grid->vf_fmin_values[i] = 3.5f + i * 0.5f;
+        grid->vf_fmin_values[i] = 2.5f + i * 0.5f;
     }
 
     /* VF_FREQ_MAX: 9.0-12.0 step 0.5 (7 values) */
@@ -308,18 +313,18 @@ static void init_default_grid(param_grid_t *grid)
         grid->vf_fmax_values[i] = 9.0f + i * 0.5f;
     }
 
-    /* VF_ZCR_THRESHOLD: 0.10-0.25 step 0.05 (4 values) */
-    grid->vf_zcr_count = 4;
+    /* VF_ZCR_THRESHOLD: 0.05-0.25 step 0.05 (5 values) - extended lower range */
+    grid->vf_zcr_count = 5;
     grid->vf_zcr_values = malloc(grid->vf_zcr_count * sizeof(float));
     for (uint32_t i = 0; i < grid->vf_zcr_count; i++) {
-        grid->vf_zcr_values[i] = 0.10f + i * 0.05f;
+        grid->vf_zcr_values[i] = 0.05f + i * 0.05f;
     }
 
-    /* VF_CONFIDENCE_THRESHOLD: 0.5-0.9 step 0.1 (5 values) */
-    grid->vf_conf_count = 5;
+    /* VF_CONFIDENCE_THRESHOLD: 0.50-0.95 step 0.1 (6 values) - extended upper range */
+    grid->vf_conf_count = 6;
     grid->vf_conf_values = malloc(grid->vf_conf_count * sizeof(float));
     for (uint32_t i = 0; i < grid->vf_conf_count; i++) {
-        grid->vf_conf_values[i] = 0.5f + i * 0.1f;
+        grid->vf_conf_values[i] = 0.50f + i * 0.09f;
     }
 
     /* VF_MIN_AMPLITUDE: 50-200 step 50 (4 values) */
@@ -507,8 +512,8 @@ static void search_random(const param_grid_t *grid, const dataset_t *dataset,
                     metrics->tp, metrics->tn, metrics->fp, metrics->fn);
         }
 
-        /* Update best */
-        if (metrics->f1_score > progress->best_metrics.f1_score) {
+        /* Update best using F2-score (prioritizes sensitivity) */
+        if (metrics->f2_score > progress->best_metrics.f2_score) {
             progress->best_metrics = *metrics;
             progress->best_config = config;
         }
@@ -547,6 +552,11 @@ static void search_local(const param_grid_t *grid, const dataset_t *dataset,
         if (rand() % 10 < 2) config.vf_noise_floor_mult = grid->vf_noise_mult_values[rand() % grid->vf_noise_mult_count];
         if (rand() % 10 < 2) config.vf_amplitude_thresh_ratio = grid->vf_amp_ratio_values[rand() % grid->vf_amp_ratio_count];
 
+        /* Skip if no parameter changed */
+        if (memcmp(&config, &progress->best_config, sizeof(ekg_config_t)) == 0) {
+            continue;
+        }
+
         /* Evaluate */
         eval_result_t result;
         evaluate_config(&config, dataset, NULL, dataset->count, &result, source_sample_rate);
@@ -568,8 +578,8 @@ static void search_local(const param_grid_t *grid, const dataset_t *dataset,
                     metrics->tp, metrics->tn, metrics->fp, metrics->fn);
         }
 
-        /* Update best if improved */
-        if (metrics->f1_score > progress->best_metrics.f1_score) {
+        /* Update best if improved using F2-score (prioritizes sensitivity) */
+        if (metrics->f2_score > progress->best_metrics.f2_score) {
             progress->best_metrics = *metrics;
             progress->best_config = config;
         }
@@ -588,7 +598,7 @@ static void search_exhaustive(const param_grid_t *grid, const dataset_t *dataset
                               progress_t *progress, uint32_t source_sample_rate)
 {
     uint64_t total = grid_size(grid);
-    progress->best_metrics.f1_score = 0.0f;
+    progress->best_metrics.f2_score = 0.0f;
 
     for (uint64_t i = 0; i < total; i++) {
         ekg_config_t config;
@@ -714,8 +724,8 @@ static void print_progress(const progress_t *progress)
 {
     float percent = 100.0f * progress->completed / progress->total_combinations;
 
-    printf("Progress: %lu/%lu (%.1f%%) - Best F1=%.3f\n",
+    printf("Progress: %lu/%lu (%.1f%%) - Best F2=%.3f (Sens=%.1f%%)\n",
            progress->completed, progress->total_combinations, percent,
-           progress->best_metrics.f1_score);
+           progress->best_metrics.f2_score, progress->best_metrics.sensitivity * 100.0f);
     fflush(stdout);
 }

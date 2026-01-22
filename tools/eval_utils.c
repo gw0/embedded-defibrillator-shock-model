@@ -168,6 +168,7 @@ void calculate_metrics(metrics_t *metrics)
         metrics->specificity = 0.0f;
         metrics->precision = 0.0f;
         metrics->f1_score = 0.0f;
+        metrics->f2_score = 0.0f;
         return;
     }
 
@@ -191,11 +192,23 @@ void calculate_metrics(metrics_t *metrics)
         metrics->precision = 0.0f;
     }
 
+    /* F1-score: harmonic mean of precision and sensitivity */
     if (metrics->precision + metrics->sensitivity > 0) {
         metrics->f1_score = 2.0f * (metrics->precision * metrics->sensitivity) /
                            (metrics->precision + metrics->sensitivity);
     } else {
         metrics->f1_score = 0.0f;
+    }
+
+    /* F2-score: F-beta with beta=2, weights sensitivity 4x over precision
+     * Formula: (1 + beta^2) * (precision * sensitivity) / (beta^2 * precision + sensitivity)
+     * With beta=2: (1 + 4) * (P * S) / (4 * P + S) = 5 * P * S / (4 * P + S)
+     */
+    if (4.0f * metrics->precision + metrics->sensitivity > 0) {
+        metrics->f2_score = 5.0f * (metrics->precision * metrics->sensitivity) /
+                           (4.0f * metrics->precision + metrics->sensitivity);
+    } else {
+        metrics->f2_score = 0.0f;
     }
 }
 
@@ -368,6 +381,7 @@ void print_metrics(const metrics_t *metrics)
     printf("  Specificity: %.1f%%\n", metrics->specificity * 100.0f);
     printf("  Precision:   %.1f%%\n", metrics->precision * 100.0f);
     printf("  F1-Score:    %.1f%%\n", metrics->f1_score * 100.0f);
+    printf("  F2-Score:    %.1f%%\n", metrics->f2_score * 100.0f);
     printf("  Confusion: TP=%u TN=%u FP=%u FN=%u\n",
            metrics->tp, metrics->tn, metrics->fp, metrics->fn);
 }
