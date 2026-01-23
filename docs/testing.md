@@ -15,6 +15,27 @@
 - Shock recommendation logic validation
 - Various amplitude variations
 
+### VF Detector Tests (`tests/test_vf_detector.c`)
+
+Tests for the VF detection subsystem and its helper functions:
+
+**Detection Tests:**
+- Coarse VF detection - verifies detection of standard VF patterns
+- Fine VF detection - verifies detection of low-amplitude VF
+- NSR rejection - normal sinus rhythm should not trigger VF detection
+- Asystole rejection - flat-line signals should not trigger VF detection
+
+**Helper Function Tests:**
+- Noise floor estimation accuracy
+- Threshold crossing rate (TCR) calculation
+- Spectral entropy computation
+- Spectral flatness calculation
+
+**Boundary Condition Tests:**
+- Minimum/maximum amplitude handling
+- Edge frequency responses
+- Duration requirement verification
+
 ## Running Tests
 
 ```bash

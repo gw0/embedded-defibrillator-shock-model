@@ -92,14 +92,18 @@ make test     # Build and run all tests
 │   ├── qrs_detector.c/h    # Pan-Tompkins QRS detection
 │   ├── heart_rate.c/h      # Heart rate analysis
 │   ├── vt_detector.c/h     # Ventricular Tachycardia detection
-│   └── vf_detector.c/h     # Ventricular Fibrillation detection
+│   ├── vf_detector.c/h     # Ventricular Fibrillation detection
+│   └── signal_utils.c/h    # Signal quality and Bayesian helpers
 ├── tests/                  # Test suite
 │   ├── test_signal_processing.c  # Unit tests
-│   └── test_ekg_analyzer.c       # Integration tests
+│   ├── test_ekg_analyzer.c       # Integration tests
+│   └── test_vf_detector.c        # VF detector tests
 ├── tools/                  # Development utilities
 │   ├── ekg_csv.c           # CSV signal analyzer
 │   ├── ekg_train.c         # Training/optimization tool
-│   └── ekg_eval.c          # Evaluation tool
+│   ├── ekg_eval.c          # Evaluation tool
+│   ├── csv_utils.c/h       # CSV parsing utilities
+│   └── eval_utils.c/h      # Evaluation helpers
 ├── docs/                   # Documentation
 │   ├── architecture.md     # Signal processing pipeline
 │   ├── development.md      # Development guidelines
@@ -151,16 +155,31 @@ make ekg_csv
 Optimize algorithm parameters using grid search:
 ```bash
 make ekg_train
-./bin/ekg_train data/SHOCK/*.csv data/NOSHOCK/*.csv
+./bin/ekg_train dataset/
+```
+
+### Diagnostic Evaluation
+```bash
+make ekg_eval_diag
+./bin/ekg_eval_diag dataset/
 ```
 
 See `docs/tools.md` for detailed usage information.
+
+## Documentation
+
+- [`docs/architecture.md`](docs/architecture.md) - Signal processing pipeline details
+- [`docs/development.md`](docs/development.md) - Development guidelines and constraints
+- [`docs/testing.md`](docs/testing.md) - Test suite documentation
+- [`docs/tools.md`](docs/tools.md) - CLI tools for training and evaluation
 
 ## Algorithm References
 
 1. **Pan, J., & Tompkins, W. J. (1985)** - "A Real-Time QRS Detection Algorithm"
 2. **AHA/ACC/HRS (2017)** - "Guideline for Management of Patients With Ventricular Arrhythmias"
 3. **Goertzel Algorithm** - Efficient frequency domain analysis
+4. **Shannon Entropy** - Signal complexity measurement
+5. **Spectral Flatness (Wiener Entropy)** - Noise-like vs tonal signal characterization
 
 ## License
 

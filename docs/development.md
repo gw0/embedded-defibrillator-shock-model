@@ -1,5 +1,7 @@
 # Development Guidelines
 
+**Design Priority**: Sensitivity prioritized over specificity (false positive acceptable, false negative dangerous).
+
 ## Embedded System Constraints
 
 - **RAM**: <10 KB target
@@ -23,8 +25,6 @@ Algorithm follows ACLS (Advanced Cardiac Life Support) guidelines:
 - Supraventricular arrhythmias
 - Premature ventricular contractions (PVCs)
 
-**Design Priority**: Sensitivity prioritized over specificity (false positive acceptable, false negative dangerous)
-
 ## Code Organization
 
 - Modular architecture with clear separation of concerns
@@ -39,9 +39,14 @@ Algorithm follows ACLS (Advanced Cardiac Life Support) guidelines:
 
 ## Parameter Modification Workflow
 
+See `src/ekg_config.h` for all tunable parameters with detailed comments.
+
 When modifying detection parameters:
 
 1. Update defaults in `src/ekg_config.h`
-2. Test with `make test` using integration test suite
-3. Optionally run training tool to optimize new parameter space
-4. Document medical/algorithmic rationale for changes
+2. Test: `make test`
+3. Evaluate: `./bin/ekg_eval dataset/`
+4. Debug failures: `./bin/ekg_eval_diag dataset/`
+5. Optimize: `./bin/ekg_train -s adaptive dataset/`
+6. Document rationale
+7. Verify F2 improves (or sensitivity doesn't decrease)
