@@ -120,7 +120,7 @@ int ekg_analyze(const int16_t *samples,
      */
 
     /* Require minimum confidence for VF detection */
-    if (vf_result.vf_detected == 1 && vf_result.confidence >= config->vf_confidence_threshold) {
+    if (vf_result.vf_detected == 1 && vf_result.confidence >= config->vf_confidence_thresh) {
         /* VF detected */
         result->shock_advised = 1;
         result->rhythm_type = 3;  /* VF */
@@ -129,7 +129,7 @@ int ekg_analyze(const int16_t *samples,
         result->heart_rate = 0;  /* Cannot measure in VF */
         result->num_qrs_detected = qrs_result.count;
 
-    } else if (vt_result.vt_detected == 1 && vt_result.confidence >= config->vt_confidence_threshold) {
+    } else if (vt_result.vt_detected == 1 && vt_result.confidence >= config->vt_confidence_thresh) {
         /* VT detected */
         result->shock_advised = 1;
         result->rhythm_type = 2;  /* VT */

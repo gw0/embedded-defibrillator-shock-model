@@ -114,8 +114,8 @@ static void search_adaptive(const param_grid_t *grid, const dataset_t *dataset,
 
 /* Output generation */
 static void write_result_csv(FILE *f, const ekg_config_t *config, const metrics_t *metrics);
-static int write_best_config_header(const char *filename, const ekg_config_t *config,
-                                    const metrics_t *metrics);
+static int write_best_config(const char *filename, const ekg_config_t *config,
+                            const metrics_t *metrics);
 
 /* Utilities */
 static void print_progress(const progress_t *progress);
@@ -263,7 +263,7 @@ int main(int argc, char *argv[])
     printf("========================================\n");
 
     /* Write best config header */
-    if (write_best_config_header(config_file, &progress.best_config, &progress.best_metrics) == 0) {
+    if (write_best_config(config_file, &progress.best_config, &progress.best_metrics) == 0) {
         printf("\nBest config saved to: %s\n", config_file);
     }
 
@@ -598,6 +598,9 @@ static uint64_t grid_size(const param_grid_t *grid)
 /* Get configuration at grid index */
 static void grid_get_config(const param_grid_t *grid, uint64_t index, ekg_config_t *config)
 {
+    /* Initialize with defaults - ensures all new fields have valid values */
+    *config = EKG_DEFAULT_CONFIG;
+
     /* Decode multi-dimensional index (reverse order of multiplication in grid_size) */
     uint64_t idx = index;
 
@@ -671,17 +674,11 @@ static void grid_get_config(const param_grid_t *grid, uint64_t index, ekg_config
     uint32_t i12 = idx % grid->vf_noise_mult_count;
     idx /= grid->vf_noise_mult_count;
 
-    uint32_t i11 = idx % grid->vf_fine_conf_count;
-    idx /= grid->vf_fine_conf_count;
-
     uint32_t i10 = idx % grid->vf_fine_amp_max_count;
     idx /= grid->vf_fine_amp_max_count;
 
     uint32_t i9 = idx % grid->vf_dominance_count;
     idx /= grid->vf_dominance_count;
-
-    uint32_t i8 = idx % grid->vf_min_amp_count;
-    idx /= grid->vf_min_amp_count;
 
     uint32_t i5 = idx % grid->vf_fmax_count;
     idx /= grid->vf_fmax_count;
@@ -700,20 +697,18 @@ static void grid_get_config(const param_grid_t *grid, uint64_t index, ekg_config
 
     uint32_t i0 = idx % grid->vt_hr_count;
 
-    /* Build configuration - original 15 parameters */
-    config->vt_hr_threshold = grid->vt_hr_values[i0];
+    /* Build configuration - override defaults with grid values */
+    config->vt_hr_thresh = grid->vt_hr_values[i0];
     config->vt_qrs_width_ms = grid->vt_qrs_values[i1];
     config->vt_regularity_cv = grid->vt_reg_values[i2];
-    config->vt_confidence_threshold = grid->vt_conf_values[i3];
+    config->vt_confidence_thresh = grid->vt_conf_values[i3];
     config->vf_freq_min = grid->vf_fmin_values[i4];
     config->vf_freq_max = grid->vf_fmax_values[i5];
-    config->vf_min_amplitude = grid->vf_min_amp_values[i8];
-    config->vf_dominance_threshold = grid->vf_dominance_values[i9];
+    config->vf_dominance_thresh = grid->vf_dominance_values[i9];
     config->vf_fine_amplitude_max = grid->vf_fine_amp_max_values[i10];
-    config->vf_fine_confidence = grid->vf_fine_conf_values[i11];
     config->vf_noise_floor_mult = grid->vf_noise_mult_values[i12];
-    config->vf_amplitude_thresh_ratio = grid->vf_amp_ratio_values[i13];
-    config->vf_evidence_threshold = grid->vf_evidence_values[i14];
+    config->vf_tcr_thresh_ratio = grid->vf_amp_ratio_values[i13];
+    config->vf_evidence_thresh = grid->vf_evidence_values[i14];
 
     /* New VF evidence amplitude thresholds */
     config->vf_amp_high_thresh = grid->vf_amp_high_thresh_values[i_vf_amp_high];
@@ -757,7 +752,7 @@ static void grid_get_config(const param_grid_t *grid, uint64_t index, ekg_config
 static void write_result_csv(FILE *f, const ekg_config_t *config, const metrics_t *metrics)
 {
     fprintf(f, "%.1f,%.1f,%.1f,%.2f,%.1f,%.1f,"
-            "%.1f,%.2f,%.1f,%.2f,%.1f,%.2f,%.1f,"
+            "%.2f,%.1f,%.1f,%.2f,%.1f,"
             "%.1f,%.1f,%.1f,%.1f,"
             "%.2f,%.2f,%.2f,%.2f,"
             "%.2f,%.2f,"
@@ -767,12 +762,11 @@ static void write_result_csv(FILE *f, const ekg_config_t *config, const metrics_
             "%.2f,%.2f,"
             "%.4f,%.4f,%.4f,%.4f,%.4f,%u,%u,%u,%u\n",
             /* Original parameters */
-            config->vt_hr_threshold, config->vt_qrs_width_ms, config->vt_regularity_cv,
-            config->vt_confidence_threshold, config->vf_freq_min, config->vf_freq_max,
-            config->vf_min_amplitude, config->vf_dominance_threshold,
-            config->vf_fine_amplitude_max, config->vf_fine_confidence,
-            config->vf_noise_floor_mult, config->vf_amplitude_thresh_ratio,
-            config->vf_evidence_threshold,
+            config->vt_hr_thresh, config->vt_qrs_width_ms, config->vt_regularity_cv,
+            config->vt_confidence_thresh, config->vf_freq_min, config->vf_freq_max,
+            config->vf_dominance_thresh, config->vf_fine_amplitude_max,
+            config->vf_noise_floor_mult, config->vf_tcr_thresh_ratio,
+            config->vf_evidence_thresh,
             /* VF amplitude thresholds */
             config->vf_amp_high_thresh, config->vf_amp_medium_thresh,
             config->vf_amp_low_thresh, config->vf_amp_vlow_thresh,
@@ -845,19 +839,17 @@ static void search_local(const param_grid_t *grid, const dataset_t *dataset,
         ekg_config_t config = progress->best_config;
 
         /* Randomly perturb each parameter with 20% probability */
-        if (rand() % 10 < 2) config.vt_hr_threshold = grid->vt_hr_values[rand() % grid->vt_hr_count];
+        if (rand() % 10 < 2) config.vt_hr_thresh = grid->vt_hr_values[rand() % grid->vt_hr_count];
         if (rand() % 10 < 2) config.vt_qrs_width_ms = grid->vt_qrs_values[rand() % grid->vt_qrs_count];
         if (rand() % 10 < 2) config.vt_regularity_cv = grid->vt_reg_values[rand() % grid->vt_reg_count];
-        if (rand() % 10 < 2) config.vt_confidence_threshold = grid->vt_conf_values[rand() % grid->vt_conf_count];
+        if (rand() % 10 < 2) config.vt_confidence_thresh = grid->vt_conf_values[rand() % grid->vt_conf_count];
         if (rand() % 10 < 2) config.vf_freq_min = grid->vf_fmin_values[rand() % grid->vf_fmin_count];
         if (rand() % 10 < 2) config.vf_freq_max = grid->vf_fmax_values[rand() % grid->vf_fmax_count];
-        if (rand() % 10 < 2) config.vf_min_amplitude = grid->vf_min_amp_values[rand() % grid->vf_min_amp_count];
-        if (rand() % 10 < 2) config.vf_dominance_threshold = grid->vf_dominance_values[rand() % grid->vf_dominance_count];
+        if (rand() % 10 < 2) config.vf_dominance_thresh = grid->vf_dominance_values[rand() % grid->vf_dominance_count];
         if (rand() % 10 < 2) config.vf_fine_amplitude_max = grid->vf_fine_amp_max_values[rand() % grid->vf_fine_amp_max_count];
-        if (rand() % 10 < 2) config.vf_fine_confidence = grid->vf_fine_conf_values[rand() % grid->vf_fine_conf_count];
         if (rand() % 10 < 2) config.vf_noise_floor_mult = grid->vf_noise_mult_values[rand() % grid->vf_noise_mult_count];
-        if (rand() % 10 < 2) config.vf_amplitude_thresh_ratio = grid->vf_amp_ratio_values[rand() % grid->vf_amp_ratio_count];
-        if (rand() % 10 < 2) config.vf_evidence_threshold = grid->vf_evidence_values[rand() % grid->vf_evidence_count];
+        if (rand() % 10 < 2) config.vf_tcr_thresh_ratio = grid->vf_amp_ratio_values[rand() % grid->vf_amp_ratio_count];
+        if (rand() % 10 < 2) config.vf_evidence_thresh = grid->vf_evidence_values[rand() % grid->vf_evidence_count];
         if (rand() % 10 < 2) config.vf_amp_high_thresh = grid->vf_amp_high_thresh_values[rand() % grid->vf_amp_high_thresh_count];
         if (rand() % 10 < 2) config.vf_amp_medium_thresh = grid->vf_amp_medium_thresh_values[rand() % grid->vf_amp_medium_thresh_count];
         if (rand() % 10 < 2) config.vf_amp_low_thresh = grid->vf_amp_low_thresh_values[rand() % grid->vf_amp_low_thresh_count];
@@ -930,8 +922,8 @@ static void search_adaptive(const param_grid_t *grid, const dataset_t *dataset,
  * ======================================== */
 
 /* Write best config header file */
-static int write_best_config_header(const char *filename, const ekg_config_t *config,
-                                    const metrics_t *metrics)
+static int write_best_config(const char *filename, const ekg_config_t *config,
+                            const metrics_t *metrics)
 {
     FILE *f = fopen(filename, "w");
     if (f == NULL) {
@@ -949,49 +941,100 @@ static int write_best_config_header(const char *filename, const ekg_config_t *co
     fprintf(f, " *   F2-Score:    %.1f%%\n", metrics->f2_score * 100.0f);
     fprintf(f, " *   Confusion:   TP=%u TN=%u FP=%u FN=%u\n",
             metrics->tp, metrics->tn, metrics->fp, metrics->fn);
-    fprintf(f, " */\n");
+    fprintf(f, " */\n\n");
+
     fprintf(f, "#ifndef EKG_OPTIMIZED_CONFIG_H\n");
     fprintf(f, "#define EKG_OPTIMIZED_CONFIG_H\n\n");
-    fprintf(f, "#define VT_HR_THRESHOLD       %.1ff\n", config->vt_hr_threshold);
-    fprintf(f, "#define VT_QRS_WIDTH_MS       %.1ff\n", config->vt_qrs_width_ms);
-    fprintf(f, "#define VT_REGULARITY_CV      %.1ff\n", config->vt_regularity_cv);
-    fprintf(f, "#define VT_CONFIDENCE_THRESHOLD %.2ff\n", config->vt_confidence_threshold);
-    fprintf(f, "#define VF_FREQ_MIN           %.1ff\n", config->vf_freq_min);
-    fprintf(f, "#define VF_FREQ_MAX           %.1ff\n", config->vf_freq_max);
-    fprintf(f, "#define VF_MIN_AMPLITUDE      %.1ff\n", config->vf_min_amplitude);
-    fprintf(f, "#define VF_DOMINANCE_THRESHOLD %.2ff\n", config->vf_dominance_threshold);
-    fprintf(f, "#define VF_FINE_AMPLITUDE_MAX %.1ff\n", config->vf_fine_amplitude_max);
-    fprintf(f, "#define VF_FINE_CONFIDENCE    %.2ff\n", config->vf_fine_confidence);
-    fprintf(f, "#define VF_NOISE_FLOOR_MULT   %.1ff\n", config->vf_noise_floor_mult);
-    fprintf(f, "#define VF_AMPLITUDE_THRESHOLD_RATIO %.2ff\n", config->vf_amplitude_thresh_ratio);
-    fprintf(f, "#define VF_EVIDENCE_THRESHOLD %.1ff\n", config->vf_evidence_threshold);
-    /* Evidence Amplitude Thresholds */
-    fprintf(f, "#define VF_AMP_HIGH_THRESH    %.1ff\n", config->vf_amp_high_thresh);
-    fprintf(f, "#define VF_AMP_MEDIUM_THRESH  %.1ff\n", config->vf_amp_medium_thresh);
-    fprintf(f, "#define VF_AMP_LOW_THRESH     %.1ff\n", config->vf_amp_low_thresh);
-    fprintf(f, "#define VF_AMP_VLOW_THRESH    %.1ff\n", config->vf_amp_vlow_thresh);
-    /* Irregularity Thresholds */
-    fprintf(f, "#define VF_ZCR_HIGH_THRESH    %.2ff\n", config->vf_zcr_high_thresh);
-    fprintf(f, "#define VF_ZCR_MOD_THRESH     %.2ff\n", config->vf_zcr_mod_thresh);
-    fprintf(f, "#define VF_TCR_HIGH_THRESH    %.2ff\n", config->vf_tcr_high_thresh);
-    fprintf(f, "#define VF_TCR_MOD_THRESH     %.2ff\n", config->vf_tcr_mod_thresh);
-    /* Entropy Thresholds */
-    fprintf(f, "#define VF_ENTROPY_HIGH_THRESH %.2ff\n", config->vf_entropy_high_thresh);
-    fprintf(f, "#define VF_ENTROPY_MOD_THRESH %.2ff\n", config->vf_entropy_mod_thresh);
-    /* Organized Rhythm Detection */
-    fprintf(f, "#define VF_ORG_HR_MIN         %.1ff\n", config->vf_org_hr_min);
-    fprintf(f, "#define VF_ORG_HR_MAX         %.1ff\n", config->vf_org_hr_max);
-    fprintf(f, "#define VF_ORG_CV_THRESH      %.1ff\n", config->vf_org_cv_thresh);
-    /* QRS Rate Penalty */
-    fprintf(f, "#define VF_QRS_RATE_PENALTY_THRESH %.2ff\n", config->vf_qrs_rate_penalty_thresh);
-    /* VT Bayesian Boundaries */
-    fprintf(f, "#define VT_HR_HIGH_THRESH     %.1ff\n", config->vt_hr_high_thresh);
-    fprintf(f, "#define VT_QRS_VWIDE_THRESH   %.1ff\n", config->vt_qrs_vwide_thresh);
-    fprintf(f, "#define VT_VREGULAR_CV_THRESH %.1ff\n", config->vt_vregular_cv_thresh);
-    /* Spectral Flatness Thresholds */
-    fprintf(f, "#define VF_FLATNESS_HIGH_THRESH %.2ff\n", config->vf_flatness_high_thresh);
-    fprintf(f, "#define VF_FLATNESS_MOD_THRESH  %.2ff\n", config->vf_flatness_mod_thresh);
-    fprintf(f, "\n#endif /* EKG_OPTIMIZED_CONFIG_H */\n");
+    fprintf(f, "#include \"ekg_config.h\"\n\n");
+
+    fprintf(f, "static const ekg_config_t EKG_OPTIMIZED_CONFIG = {\n");
+    fprintf(f, "    /* VT Detection */\n");
+    fprintf(f, "    .vt_hr_thresh = %.1ff,\n", config->vt_hr_thresh);
+    fprintf(f, "    .vt_qrs_width_ms = %.1ff,\n", config->vt_qrs_width_ms);
+    fprintf(f, "    .vt_regularity_cv = %.1ff,\n", config->vt_regularity_cv);
+    fprintf(f, "    .vt_confidence_thresh = %.2ff,\n", config->vt_confidence_thresh);
+    fprintf(f, "    .vt_min_consecutive = %u,\n", config->vt_min_consecutive);
+    fprintf(f, "\n    /* VT Bayesian Boundaries */\n");
+    fprintf(f, "    .vt_hr_high_thresh = %.1ff,\n", config->vt_hr_high_thresh);
+    fprintf(f, "    .vt_qrs_vwide_thresh = %.1ff,\n", config->vt_qrs_vwide_thresh);
+    fprintf(f, "    .vt_vregular_cv_thresh = %.1ff,\n", config->vt_vregular_cv_thresh);
+    fprintf(f, "\n    /* VT Bayesian Log-Likelihood Ratios */\n");
+    fprintf(f, "    .lr_vt_hr_thresh_pos = %.2ff,\n", config->lr_vt_hr_thresh_pos);
+    fprintf(f, "    .lr_vt_hr_thresh_neg = %.2ff,\n", config->lr_vt_hr_thresh_neg);
+    fprintf(f, "    .lr_vt_hr_high_pos = %.2ff,\n", config->lr_vt_hr_high_pos);
+    fprintf(f, "    .lr_vt_hr_high_neg = %.2ff,\n", config->lr_vt_hr_high_neg);
+    fprintf(f, "    .lr_vt_qrs_wide_pos = %.2ff,\n", config->lr_vt_qrs_wide_pos);
+    fprintf(f, "    .lr_vt_qrs_wide_neg = %.2ff,\n", config->lr_vt_qrs_wide_neg);
+    fprintf(f, "    .lr_vt_qrs_vwide_pos = %.2ff,\n", config->lr_vt_qrs_vwide_pos);
+    fprintf(f, "    .lr_vt_qrs_vwide_neg = %.2ff,\n", config->lr_vt_qrs_vwide_neg);
+    fprintf(f, "    .lr_vt_regular_pos = %.2ff,\n", config->lr_vt_regular_pos);
+    fprintf(f, "    .lr_vt_regular_neg = %.2ff,\n", config->lr_vt_regular_neg);
+    fprintf(f, "    .lr_vt_vregular_pos = %.2ff,\n", config->lr_vt_vregular_pos);
+    fprintf(f, "    .lr_vt_vregular_neg = %.2ff,\n", config->lr_vt_vregular_neg);
+    fprintf(f, "    .lr_vt_sustained_pos = %.2ff,\n", config->lr_vt_sustained_pos);
+    fprintf(f, "    .lr_vt_sustained_neg = %.2ff,\n", config->lr_vt_sustained_neg);
+    fprintf(f, "\n    /* VF Detection */\n");
+    fprintf(f, "    .vf_freq_min = %.1ff,\n", config->vf_freq_min);
+    fprintf(f, "    .vf_freq_max = %.1ff,\n", config->vf_freq_max);
+    fprintf(f, "    .vf_dominance_thresh = %.2ff,\n", config->vf_dominance_thresh);
+    fprintf(f, "    .vf_noise_floor_mult = %.1ff,\n", config->vf_noise_floor_mult);
+    fprintf(f, "    .vf_tcr_thresh_ratio = %.2ff,\n", config->vf_tcr_thresh_ratio);
+    fprintf(f, "    .vf_evidence_thresh = %.1ff,\n", config->vf_evidence_thresh);
+    fprintf(f, "    .vf_confidence_thresh = %.2ff,\n", config->vf_confidence_thresh);
+    fprintf(f, "    .vf_qrs_rate_thresh = %.2ff,\n", config->vf_qrs_rate_thresh);
+    fprintf(f, "    .vf_fine_amplitude_max = %.1ff,\n", config->vf_fine_amplitude_max);
+    fprintf(f, "    .vf_penalty_freq_min = %.1ff,\n", config->vf_penalty_freq_min);
+    fprintf(f, "    .vf_penalty_freq_max = %.1ff,\n", config->vf_penalty_freq_max);
+    fprintf(f, "\n    /* VF Amplitude Thresholds */\n");
+    fprintf(f, "    .vf_amp_high_thresh = %.1ff,\n", config->vf_amp_high_thresh);
+    fprintf(f, "    .vf_amp_medium_thresh = %.1ff,\n", config->vf_amp_medium_thresh);
+    fprintf(f, "    .vf_amp_low_thresh = %.1ff,\n", config->vf_amp_low_thresh);
+    fprintf(f, "    .vf_amp_vlow_thresh = %.1ff,\n", config->vf_amp_vlow_thresh);
+    fprintf(f, "\n    /* VF Irregularity Thresholds */\n");
+    fprintf(f, "    .vf_zcr_high_thresh = %.2ff,\n", config->vf_zcr_high_thresh);
+    fprintf(f, "    .vf_zcr_mod_thresh = %.2ff,\n", config->vf_zcr_mod_thresh);
+    fprintf(f, "    .vf_tcr_high_thresh = %.2ff,\n", config->vf_tcr_high_thresh);
+    fprintf(f, "    .vf_tcr_mod_thresh = %.2ff,\n", config->vf_tcr_mod_thresh);
+    fprintf(f, "\n    /* VF Entropy Thresholds */\n");
+    fprintf(f, "    .vf_entropy_high_thresh = %.2ff,\n", config->vf_entropy_high_thresh);
+    fprintf(f, "    .vf_entropy_mod_thresh = %.2ff,\n", config->vf_entropy_mod_thresh);
+    fprintf(f, "\n    /* VF Spectral Flatness */\n");
+    fprintf(f, "    .vf_flatness_high_thresh = %.2ff,\n", config->vf_flatness_high_thresh);
+    fprintf(f, "    .vf_flatness_mod_thresh = %.2ff,\n", config->vf_flatness_mod_thresh);
+    fprintf(f, "\n    /* VF Organized Rhythm Detection */\n");
+    fprintf(f, "    .vf_org_hr_min = %.1ff,\n", config->vf_org_hr_min);
+    fprintf(f, "    .vf_org_hr_max = %.1ff,\n", config->vf_org_hr_max);
+    fprintf(f, "    .vf_org_cv_thresh = %.1ff,\n", config->vf_org_cv_thresh);
+    fprintf(f, "    .vf_qrs_rate_penalty_thresh = %.2ff,\n", config->vf_qrs_rate_penalty_thresh);
+    fprintf(f, "\n    /* VF Evidence Weights - Amplitude */\n");
+    fprintf(f, "    .vf_ev_amp_high = %.2ff,\n", config->vf_ev_amp_high);
+    fprintf(f, "    .vf_ev_amp_medium = %.2ff,\n", config->vf_ev_amp_medium);
+    fprintf(f, "    .vf_ev_amp_low = %.2ff,\n", config->vf_ev_amp_low);
+    fprintf(f, "    .vf_ev_amp_vlow = %.2ff,\n", config->vf_ev_amp_vlow);
+    fprintf(f, "\n    /* VF Evidence Weights - Frequency */\n");
+    fprintf(f, "    .vf_ev_freq_optimal = %.2ff,\n", config->vf_ev_freq_optimal);
+    fprintf(f, "    .vf_ev_freq_good = %.2ff,\n", config->vf_ev_freq_good);
+    fprintf(f, "    .vf_ev_freq_edge = %.2ff,\n", config->vf_ev_freq_edge);
+    fprintf(f, "\n    /* VF Evidence Weights - Irregularity */\n");
+    fprintf(f, "    .vf_ev_qrs_absent = %.2ff,\n", config->vf_ev_qrs_absent);
+    fprintf(f, "    .vf_ev_high_irreg = %.2ff,\n", config->vf_ev_high_irreg);
+    fprintf(f, "    .vf_ev_mod_irreg = %.2ff,\n", config->vf_ev_mod_irreg);
+    fprintf(f, "\n    /* VF Evidence Weights - Entropy */\n");
+    fprintf(f, "    .vf_ev_entropy_high = %.2ff,\n", config->vf_ev_entropy_high);
+    fprintf(f, "    .vf_ev_entropy_mod = %.2ff,\n", config->vf_ev_entropy_mod);
+    fprintf(f, "\n    /* VF Evidence Weights - Spectral Flatness */\n");
+    fprintf(f, "    .vf_ev_flatness_high = %.2ff,\n", config->vf_ev_flatness_high);
+    fprintf(f, "    .vf_ev_flatness_mod = %.2ff,\n", config->vf_ev_flatness_mod);
+    fprintf(f, "\n    /* VF Evidence Weights - Penalties */\n");
+    fprintf(f, "    .vf_ev_organized_penalty = %.2ff,\n", config->vf_ev_organized_penalty);
+    fprintf(f, "    .vf_ev_qrs_freq_penalty = %.2ff,\n", config->vf_ev_qrs_freq_penalty);
+    fprintf(f, "    .vf_ev_qrs_regular_penalty = %.2ff,\n", config->vf_ev_qrs_regular_penalty);
+    fprintf(f, "\n    /* Signal Quality */\n");
+    fprintf(f, "    .snr_good_thresh = %.1ff,\n", config->snr_good_thresh);
+    fprintf(f, "    .signal_quality_min = %.2ff\n", config->signal_quality_min);
+    fprintf(f, "};\n\n");
+
+    fprintf(f, "#endif /* EKG_OPTIMIZED_CONFIG_H */\n");
 
     fclose(f);
     return 0;

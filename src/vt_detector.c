@@ -152,7 +152,7 @@ int detect_vt(const float *filtered, const float *raw, uint16_t num_samples,
     result->mean_qrs_width = mean_qrs_width;
 
     /* If heart rate <= threshold bpm, not VT */
-    if (heart_rate <= config->vt_hr_threshold) {
+    if (heart_rate <= config->vt_hr_thresh) {
         result->vt_detected = 0;
         result->confidence = 0.0f;
         return EKG_SUCCESS;
@@ -211,25 +211,25 @@ int detect_vt(const float *filtered, const float *raw, uint16_t num_samples,
     float log_odds = 0.0f;  /* Prior: 50% */
 
     /* Heart rate contribution */
-    log_odds += (heart_rate > config->vt_hr_threshold) ? LR_VT_HR_THRESH_POS : LR_VT_HR_THRESH_NEG;
-    log_odds += (heart_rate > config->vt_hr_high_thresh) ? LR_VT_HR_HIGH_POS : LR_VT_HR_HIGH_NEG;
+    log_odds += (heart_rate > config->vt_hr_thresh) ? config->lr_vt_hr_thresh_pos : config->lr_vt_hr_thresh_neg;
+    log_odds += (heart_rate > config->vt_hr_high_thresh) ? config->lr_vt_hr_high_pos : config->lr_vt_hr_high_neg;
 
     /* QRS width contribution */
-    log_odds += (mean_qrs_width > config->vt_qrs_width_ms) ? LR_VT_QRS_WIDE_POS : LR_VT_QRS_WIDE_NEG;
-    log_odds += (mean_qrs_width > config->vt_qrs_vwide_thresh) ? LR_VT_QRS_VWIDE_POS : LR_VT_QRS_VWIDE_NEG;
+    log_odds += (mean_qrs_width > config->vt_qrs_width_ms) ? config->lr_vt_qrs_wide_pos : config->lr_vt_qrs_wide_neg;
+    log_odds += (mean_qrs_width > config->vt_qrs_vwide_thresh) ? config->lr_vt_qrs_vwide_pos : config->lr_vt_qrs_vwide_neg;
 
     /* Regularity contribution */
-    log_odds += (rr_cv < config->vt_regularity_cv) ? LR_VT_REGULAR_POS : LR_VT_REGULAR_NEG;
-    log_odds += (rr_cv < config->vt_vregular_cv_thresh) ? LR_VT_VREGULAR_POS : LR_VT_VREGULAR_NEG;
+    log_odds += (rr_cv < config->vt_regularity_cv) ? config->lr_vt_regular_pos : config->lr_vt_regular_neg;
+    log_odds += (rr_cv < config->vt_vregular_cv_thresh) ? config->lr_vt_vregular_pos : config->lr_vt_vregular_neg;
 
     /* Sustained duration contribution */
-    log_odds += (max_consecutive >= VT_MIN_CONSECUTIVE && duration_met) ? LR_VT_SUSTAINED_POS : LR_VT_SUSTAINED_NEG;
+    log_odds += (max_consecutive >= config->vt_min_consecutive && duration_met) ? config->lr_vt_sustained_pos : config->lr_vt_sustained_neg;
 
     /* Convert to probability */
     float confidence = log_odds_to_probability(log_odds);
 
     /* VT detected if confidence >= threshold AND duration requirement met */
-    if (confidence >= config->vt_confidence_threshold && duration_met) {
+    if (confidence >= config->vt_confidence_thresh && duration_met) {
         result->vt_detected = 1;
     } else {
         result->vt_detected = 0;

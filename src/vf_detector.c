@@ -551,14 +551,14 @@ int detect_vf(const float *signal, uint16_t num_samples,
     /* Use frequency detection with configurable dominance threshold */
     freq_result_t freq = find_dominant_frequency(signal, num_samples,
                                                   sample_rate,
-                                                  config->vf_dominance_threshold);
+                                                  config->vf_dominance_thresh);
     result->dominant_freq = freq.frequency;
 
     /* Calculate both zero-crossing rate and threshold-based crossing rate */
     float zcr = calculate_zero_crossing_rate(signal, num_samples, sample_rate);
     result->zero_crossing_rate = zcr;
 
-    float threshold_for_crossing = amplitude * config->vf_amplitude_thresh_ratio;
+    float threshold_for_crossing = amplitude * config->vf_tcr_thresh_ratio;
     crossing_result_t tcr = calculate_threshold_crossing_rate(signal, num_samples, sample_rate,
                                                                threshold_for_crossing);
     result->threshold_crossing_rate = tcr.rate;
@@ -568,8 +568,8 @@ int detect_vf(const float *signal, uint16_t num_samples,
     float duration_sec = (float)num_samples / (float)sample_rate;
     float qrs_rate = (float)qrs_count / duration_sec;
 
-    /* If fewer than 0.5 QRS per second, consider QRS absent */
-    uint8_t qrs_absent = (qrs_rate < VF_QRS_RATE_THRESHOLD) ? 1 : 0;
+    /* If fewer than threshold QRS per second, consider QRS absent */
+    uint8_t qrs_absent = (qrs_rate < config->vf_qrs_rate_thresh) ? 1 : 0;
     result->qrs_absent = qrs_absent;
 
     /*
@@ -615,51 +615,51 @@ int detect_vf(const float *signal, uint16_t num_samples,
 
     /* Amplitude contribution (soft threshold) - amplitude is directly measurable, high confidence */
     if (amplitude > config->vf_amp_high_thresh) {
-        evidence_score += VF_EV_AMP_HIGH;
+        evidence_score += config->vf_ev_amp_high;
     } else if (amplitude > config->vf_amp_medium_thresh) {
-        evidence_score += VF_EV_AMP_MEDIUM;
+        evidence_score += config->vf_ev_amp_medium;
     } else if (amplitude > config->vf_amp_low_thresh) {
-        evidence_score += VF_EV_AMP_LOW;
+        evidence_score += config->vf_ev_amp_low;
     } else if (amplitude > config->vf_amp_vlow_thresh) {
-        evidence_score += VF_EV_AMP_VLOW;
+        evidence_score += config->vf_ev_amp_vlow;
     }
 
     /* Frequency contribution - weighted by measurement confidence */
     if (freq.frequency >= 5.0f && freq.frequency <= 8.0f) {
-        evidence_score += VF_EV_FREQ_OPTIMAL * freq.confidence;
+        evidence_score += config->vf_ev_freq_optimal * freq.confidence;
     } else if (freq.frequency >= config->vf_freq_min &&
                freq.frequency <= config->vf_freq_max) {
-        evidence_score += VF_EV_FREQ_GOOD * freq.confidence;
+        evidence_score += config->vf_ev_freq_good * freq.confidence;
     } else if (freq.frequency >= config->vf_penalty_freq_min &&
                freq.frequency <= config->vf_penalty_freq_max) {
-        evidence_score += VF_EV_FREQ_EDGE * freq.confidence;
+        evidence_score += config->vf_ev_freq_edge * freq.confidence;
     }
 
     /* Irregularity contribution - weighted by crossing rate confidence */
     /* Only meaningful when QRS is absent or at very low rate (not organized) */
     if (qrs_absent) {
-        evidence_score += VF_EV_QRS_ABSENT;
+        evidence_score += config->vf_ev_qrs_absent;
     } else if (!is_organized_tachy && qrs_rate <= config->vf_qrs_rate_penalty_thresh) {
         /* QRS present but disorganized - check ZCR/TCR for VF characteristics */
         if (zcr > config->vf_zcr_high_thresh || tcr.rate > config->vf_tcr_high_thresh) {
-            evidence_score += VF_EV_HIGH_IRREG * tcr.confidence;
+            evidence_score += config->vf_ev_high_irreg * tcr.confidence;
         } else if (zcr > config->vf_zcr_mod_thresh || tcr.rate > config->vf_tcr_mod_thresh) {
-            evidence_score += VF_EV_MOD_IRREG * tcr.confidence;
+            evidence_score += config->vf_ev_mod_irreg * tcr.confidence;
         }
     }
 
     /* Entropy contribution - weighted by measurement confidence */
     if (ent.entropy > config->vf_entropy_high_thresh) {
-        evidence_score += VF_EV_ENTROPY_HIGH * ent.confidence;
+        evidence_score += config->vf_ev_entropy_high * ent.confidence;
     } else if (ent.entropy > config->vf_entropy_mod_thresh) {
-        evidence_score += VF_EV_ENTROPY_MOD * ent.confidence;
+        evidence_score += config->vf_ev_entropy_mod * ent.confidence;
     }
 
     /* Spectral flatness contribution - weighted by confidence, low weights to limit FP */
     if (flat.flatness > config->vf_flatness_high_thresh) {
-        evidence_score += VF_EV_FLATNESS_HIGH * flat.confidence;
+        evidence_score += config->vf_ev_flatness_high * flat.confidence;
     } else if (flat.flatness > config->vf_flatness_mod_thresh) {
-        evidence_score += VF_EV_FLATNESS_MOD * flat.confidence;
+        evidence_score += config->vf_ev_flatness_mod * flat.confidence;
     }
 
     /* Organized rhythm penalties (not scaled - penalties are definitive) */
@@ -669,29 +669,29 @@ int detect_vf(const float *signal, uint16_t num_samples,
                                freq.frequency > config->vf_penalty_freq_max);
 
     if (is_organized_tachy) {
-        evidence_score += VF_EV_ORGANIZED_PENALTY;
+        evidence_score += config->vf_ev_organized_penalty;
     } else if (qrs_rate > config->vf_qrs_rate_penalty_thresh) {
         if (freq_outside_vf) {
             /* Strong penalty: frequency outside VF range indicates organized rhythm */
-            evidence_score += VF_EV_QRS_FREQ_PENALTY;
+            evidence_score += config->vf_ev_qrs_freq_penalty;
         } else if (is_regular_qrs) {
             /* Weak penalty: VF frequency but regular QRS - could be VF with false detections */
-            evidence_score += VF_EV_QRS_REGULAR_PENALTY;
+            evidence_score += config->vf_ev_qrs_regular_penalty;
         }
     }
 
     /* Detection decision based on evidence threshold */
     /* Require minimum amplitude above noise floor to avoid false positives */
-    if (evidence_score >= config->vf_evidence_threshold && amplitude > adaptive_threshold) {
+    if (evidence_score >= config->vf_evidence_thresh && amplitude > adaptive_threshold) {
         result->vf_detected = 1;
         result->is_fine_vf = (amplitude <= config->vf_fine_amplitude_max) ? 1 : 0;
 
         /* Confidence via sigmoid of margin above threshold: [0, 1] range */
-        float margin = evidence_score - config->vf_evidence_threshold;
+        float margin = evidence_score - config->vf_evidence_thresh;
         result->confidence = 1.0f / (1.0f + expf(-margin));
 
         /* Scale by signal quality */
-        float signal_quality = estimate_signal_quality(signal, num_samples, (float)sample_rate);
+        float signal_quality = estimate_signal_quality(signal, num_samples, (float)sample_rate, config);
         result->confidence *= signal_quality;
 
         return EKG_SUCCESS;
@@ -715,9 +715,9 @@ int detect_vf(const float *signal, uint16_t num_samples,
         result->diag_fail_reason |= DIAG_FAIL_ORGANIZED;
     if (qrs_rate > config->vf_qrs_rate_penalty_thresh)  /* QRS penalty applied */
         result->diag_fail_reason |= DIAG_FAIL_QRS_PENALTY;
-    if (evidence_score >= config->vf_evidence_threshold - 1.0f)
+    if (evidence_score >= config->vf_evidence_thresh - 1.0f)
         result->diag_fail_reason |= DIAG_FAIL_CONFIDENCE;
-    if (evidence_score < config->vf_evidence_threshold - 1.0f)  /* Well below threshold */
+    if (evidence_score < config->vf_evidence_thresh - 1.0f)  /* Well below threshold */
         result->diag_fail_reason |= DIAG_FAIL_LOW_EVIDENCE;
 #endif
 

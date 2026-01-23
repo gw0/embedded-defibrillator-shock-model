@@ -9,6 +9,7 @@
 #define SIGNAL_UTILS_H
 
 #include <stddef.h>
+#include "ekg_config.h"
 
 /**
  * Convert log-odds to probability.
@@ -30,8 +31,10 @@ float log_odds_to_probability(float log_odds);
  * @param signal Pointer to signal samples
  * @param num_samples Number of samples in signal
  * @param sample_rate Sampling rate in Hz
- * @return Quality factor in range [SIGNAL_QUALITY_MIN, 1.0]
+ * @param config Configuration struct (uses snr_good_thresh, signal_quality_min)
+ * @return Quality factor in range [config->signal_quality_min, 1.0]
  */
-float estimate_signal_quality(const float *signal, size_t num_samples, float sample_rate);
+float estimate_signal_quality(const float *signal, size_t num_samples,
+                              float sample_rate, const ekg_config_t *config);
 
 #endif /* SIGNAL_UTILS_H */

@@ -18,12 +18,18 @@ float log_odds_to_probability(float log_odds)
     return 1.0f / (1.0f + expf(-log_odds));
 }
 
-float estimate_signal_quality(const float *signal, size_t num_samples, float sample_rate)
+float estimate_signal_quality(const float *signal, size_t num_samples,
+                              float sample_rate, const ekg_config_t *config)
 {
     (void)sample_rate;  /* Currently unused, but kept for future enhancements */
 
+    /* Use default config if NULL */
+    if (config == NULL) {
+        config = &EKG_DEFAULT_CONFIG;
+    }
+
     if (signal == NULL || num_samples < 10) {
-        return SIGNAL_QUALITY_MIN;
+        return config->signal_quality_min;
     }
 
     /* Estimate signal power (variance) */
@@ -53,11 +59,11 @@ float estimate_signal_quality(const float *signal, size_t num_samples, float sam
     }
 
     float snr = signal_var / noise_var;
-    float quality = snr / SNR_GOOD_THRESHOLD;
+    float quality = snr / config->snr_good_thresh;
 
-    /* Clamp to [SIGNAL_QUALITY_MIN, 1.0] */
-    if (quality < SIGNAL_QUALITY_MIN) {
-        quality = SIGNAL_QUALITY_MIN;
+    /* Clamp to [signal_quality_min, 1.0] */
+    if (quality < config->signal_quality_min) {
+        quality = config->signal_quality_min;
     }
     if (quality > 1.0f) {
         quality = 1.0f;

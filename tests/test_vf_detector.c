@@ -146,7 +146,8 @@ void test_coarse_vf_detection(void)
     run_test("VF detected", vf_result.vf_detected == 1);
     run_test("Not classified as fine VF", vf_result.is_fine_vf == 0);
     run_test("Dominant frequency in VF range",
-             vf_result.dominant_freq >= VF_FREQ_MIN && vf_result.dominant_freq <= VF_FREQ_MAX);
+             vf_result.dominant_freq >= EKG_DEFAULT_CONFIG.vf_freq_min &&
+             vf_result.dominant_freq <= EKG_DEFAULT_CONFIG.vf_freq_max);
     run_test("Confidence > 0.5", vf_result.confidence > 0.5f);
 
     printf("  Dominant freq: %.1f Hz, Confidence: %.2f\n",
@@ -262,7 +263,9 @@ void test_helper_functions(void)
 
     /* Test frequency detection with dominance threshold */
     freq_result_t freq = find_dominant_frequency(signal, TEST_SAMPLES, EKG_SAMPLE_RATE, 0.4f);
-    run_test("Dominant frequency in VF range", freq.frequency >= VF_FREQ_MIN && freq.frequency <= VF_FREQ_MAX);
+    run_test("Dominant frequency in VF range",
+             freq.frequency >= EKG_DEFAULT_CONFIG.vf_freq_min &&
+             freq.frequency <= EKG_DEFAULT_CONFIG.vf_freq_max);
     run_test("Frequency confidence in [0,1]", freq.confidence >= 0.0f && freq.confidence <= 1.0f);
     printf("  Dominant frequency: %.1f Hz (confidence=%.2f)\n", freq.frequency, freq.confidence);
 
