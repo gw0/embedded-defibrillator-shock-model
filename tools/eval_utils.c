@@ -335,9 +335,12 @@ void evaluate_config(const ekg_config_t *config, const dataset_t *dataset,
             g_diag_fails.diag_total_fn++;
             if (file_fail_reason & DIAG_FAIL_AMPLITUDE) g_diag_fails.diag_amplitude_fails++;
             if (file_fail_reason & DIAG_FAIL_FREQUENCY) g_diag_fails.diag_frequency_fails++;
+            if (file_fail_reason & DIAG_FAIL_FREQ_SUBOPT) g_diag_fails.diag_freq_subopt_fails++;
             if (file_fail_reason & DIAG_FAIL_IRREGULARITY) g_diag_fails.diag_irregularity_fails++;
             if (file_fail_reason & DIAG_FAIL_ORGANIZED) g_diag_fails.diag_organized_fails++;
+            if (file_fail_reason & DIAG_FAIL_QRS_PENALTY) g_diag_fails.diag_qrs_penalty_fails++;
             if (file_fail_reason & DIAG_FAIL_CONFIDENCE) g_diag_fails.diag_confidence_fails++;
+            if (file_fail_reason & DIAG_FAIL_LOW_EVIDENCE) g_diag_fails.diag_low_evidence_fails++;
         }
 #endif
 
@@ -496,7 +499,6 @@ void print_config_params(const ekg_config_t *config)
     printf("  VF_FREQ_MIN:          %.1f Hz\n", config->vf_freq_min);
     printf("  VF_FREQ_MAX:          %.1f Hz\n", config->vf_freq_max);
     printf("  VF_ZCR_THRESHOLD:     %.2f\n", config->vf_zcr_threshold);
-    printf("  VF_CONFIDENCE:        %.2f\n", config->vf_confidence_threshold);
     printf("  VF_MIN_AMPLITUDE:     %.1f\n", config->vf_min_amplitude);
     printf("  VF_DOMINANCE_THRESH:  %.2f\n", config->vf_dominance_threshold);
     printf("  VF_FINE_AMP_MAX:      %.1f\n", config->vf_fine_amplitude_max);
@@ -517,6 +519,9 @@ void print_config_params(const ekg_config_t *config)
     /* Entropy Thresholds */
     printf("  VF_ENTROPY_HIGH:      %.2f\n", config->vf_entropy_high_thresh);
     printf("  VF_ENTROPY_MOD:       %.2f\n", config->vf_entropy_mod_thresh);
+    /* Spectral Flatness Thresholds */
+    printf("  VF_FLATNESS_HIGH:     %.2f\n", config->vf_flatness_high_thresh);
+    printf("  VF_FLATNESS_MOD:      %.2f\n", config->vf_flatness_mod_thresh);
     /* Organized Rhythm Detection */
     printf("  VF_ORG_HR_MIN:        %.1f bpm\n", config->vf_org_hr_min);
     printf("  VF_ORG_HR_MAX:        %.1f bpm\n", config->vf_org_hr_max);
@@ -543,12 +548,18 @@ void diag_print_fail_breakdown(const diag_fail_breakdown_t *fails)
                100.0f * fails->diag_amplitude_fails / fails->diag_total_fn);
         printf("  Frequency:     %4u (%5.1f%%)\n", fails->diag_frequency_fails,
                100.0f * fails->diag_frequency_fails / fails->diag_total_fn);
+        printf("  Freq SubOpt:   %4u (%5.1f%%)\n", fails->diag_freq_subopt_fails,
+               100.0f * fails->diag_freq_subopt_fails / fails->diag_total_fn);
         printf("  Irregularity:  %4u (%5.1f%%)\n", fails->diag_irregularity_fails,
                100.0f * fails->diag_irregularity_fails / fails->diag_total_fn);
         printf("  Organized:     %4u (%5.1f%%)\n", fails->diag_organized_fails,
                100.0f * fails->diag_organized_fails / fails->diag_total_fn);
+        printf("  QRS Penalty:   %4u (%5.1f%%)\n", fails->diag_qrs_penalty_fails,
+               100.0f * fails->diag_qrs_penalty_fails / fails->diag_total_fn);
         printf("  Confidence:    %4u (%5.1f%%)\n", fails->diag_confidence_fails,
                100.0f * fails->diag_confidence_fails / fails->diag_total_fn);
+        printf("  Low Evidence:  %4u (%5.1f%%)\n", fails->diag_low_evidence_fails,
+               100.0f * fails->diag_low_evidence_fails / fails->diag_total_fn);
     }
 }
 

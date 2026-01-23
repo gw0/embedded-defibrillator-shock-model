@@ -119,6 +119,7 @@ int ekg_analyze(const int16_t *samples,
      * Default to no shock when uncertain
      */
 
+    /* Require minimum confidence for VF detection */
     if (vf_result.vf_detected == 1 && vf_result.confidence >= config->vf_confidence_threshold) {
         /* VF detected */
         result->shock_advised = 1;

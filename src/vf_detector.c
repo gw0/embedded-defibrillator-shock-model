@@ -291,31 +291,16 @@ crossing_result_t calculate_threshold_crossing_rate(const float *signal, uint16_
     return result;
 }
 
-uint8_t check_organized_tachycardia(const qrs_detection_result_t *qrs_result,
-                                     uint16_t sample_rate,
-                                     const ekg_config_t *config)
+/* Calculate RR interval coefficient of variation (returns -1 if insufficient data) */
+float calculate_rr_cv(const qrs_detection_result_t *qrs_result, uint16_t sample_rate)
 {
     if (qrs_result == NULL || qrs_result->count < 4 || qrs_result->locations == NULL) {
-        return 0;  /* Need at least 4 QRS with valid locations to assess regularity */
+        return -1.0f;
     }
 
-    /* Use default config if NULL */
-    if (config == NULL) {
-        config = &EKG_DEFAULT_CONFIG;
-    }
-
-    /*
-     * SVT/Organized tachycardia characteristics:
-     * 1. Heart rate in configurable tachycardia range (default: 120-220 bpm)
-     * 2. Regular RR intervals (CV < configurable threshold, default: 15%)
-     *
-     * VF should NOT be detected when these conditions are met.
-     */
-
-    /* Calculate RR intervals */
     uint8_t num_intervals = qrs_result->count - 1;
     float sum_rr = 0.0f;
-    float intervals[49];  /* Max QRS_MAX_DETECTIONS - 1 */
+    float intervals[49];
 
     for (uint8_t i = 0; i < num_intervals && i < 49; i++) {
         intervals[i] = (float)(qrs_result->locations[i + 1] - qrs_result->locations[i])
@@ -325,25 +310,45 @@ uint8_t check_organized_tachycardia(const qrs_detection_result_t *qrs_result,
 
     float mean_rr = sum_rr / (float)num_intervals;
 
-    /* Calculate heart rate */
-    float heart_rate = 60.0f / mean_rr;
-
-    /* Must be in tachycardia range (configurable) */
-    if (heart_rate < config->vf_org_hr_min || heart_rate > config->vf_org_hr_max) {
-        return 0;
-    }
-
-    /* Calculate coefficient of variation */
     float sum_sq_diff = 0.0f;
     for (uint8_t i = 0; i < num_intervals && i < 49; i++) {
         float diff = intervals[i] - mean_rr;
         sum_sq_diff += diff * diff;
     }
     float std_dev = sqrtf(sum_sq_diff / (float)num_intervals);
-    float cv = (std_dev / mean_rr) * 100.0f;  /* Percent */
 
-    /* If CV < threshold, rhythm is organized (likely SVT, not VF) */
-    return (cv < config->vf_org_cv_thresh) ? 1 : 0;
+    return (std_dev / mean_rr) * 100.0f;  /* Percent */
+}
+
+uint8_t check_organized_tachycardia(const qrs_detection_result_t *qrs_result,
+                                     uint16_t sample_rate,
+                                     const ekg_config_t *config)
+{
+    if (qrs_result == NULL || qrs_result->count < 4 || qrs_result->locations == NULL) {
+        return 0;
+    }
+
+    if (config == NULL) {
+        config = &EKG_DEFAULT_CONFIG;
+    }
+
+    /* Calculate heart rate from mean RR interval */
+    uint8_t num_intervals = qrs_result->count - 1;
+    float sum_rr = 0.0f;
+    for (uint8_t i = 0; i < num_intervals && i < 49; i++) {
+        sum_rr += (float)(qrs_result->locations[i + 1] - qrs_result->locations[i])
+                  / (float)sample_rate;
+    }
+    float heart_rate = 60.0f / (sum_rr / (float)num_intervals);
+
+    /* Must be in tachycardia range */
+    if (heart_rate < config->vf_org_hr_min || heart_rate > config->vf_org_hr_max) {
+        return 0;
+    }
+
+    /* Check regularity using CV */
+    float cv = calculate_rr_cv(qrs_result, sample_rate);
+    return (cv >= 0 && cv < config->vf_org_cv_thresh) ? 1 : 0;
 }
 
 entropy_result_t calculate_spectral_entropy(const float *signal, uint16_t num_samples,
@@ -410,6 +415,84 @@ entropy_result_t calculate_spectral_entropy(const float *signal, uint16_t num_sa
     float power_factor = (total_power > 100.0f) ? 1.0f : total_power / 100.0f;
 
     result.confidence = sample_factor * power_factor;
+
+    return result;
+}
+
+flatness_result_t calculate_spectral_flatness(const float *signal, uint16_t num_samples,
+                                               uint16_t sample_rate)
+{
+    flatness_result_t result = {0.0f, 0.0f};
+
+    if (signal == NULL || num_samples == 0 || sample_rate == 0) {
+        return result;
+    }
+
+    /*
+     * Spectral flatness calculation:
+     * Flatness = geometric_mean(magnitudes) / arithmetic_mean(magnitudes)
+     *
+     * For numerical stability, compute log of geometric mean:
+     * log(geometric_mean) = (1/N) * sum(log(mag_i))
+     * Then: flatness = exp(log_geometric_mean) / arithmetic_mean
+     *
+     * VF is spectrally flat (energy distributed across frequencies): flatness ~0.7-1.0
+     * Organized rhythms have peaked spectra (energy at few frequencies): flatness ~0.1-0.4
+     *
+     * This is a powerful discriminator for VF detection because:
+     * - VF has no dominant frequency (chaotic, broad spectrum)
+     * - Organized rhythms (NSR, VT, SVT) have clear spectral peaks
+     */
+
+    float magnitudes[VF_NUM_TEST_FREQS];
+    float total_mag = 0.0f;
+    float log_sum = 0.0f;
+    uint8_t valid_count = 0;
+
+    /* Calculate magnitude at each test frequency using Goertzel */
+    for (uint8_t i = 0; i < VF_NUM_TEST_FREQS; i++) {
+        magnitudes[i] = goertzel_magnitude(signal, num_samples,
+                                           VF_TEST_FREQS[i], sample_rate);
+        total_mag += magnitudes[i];
+
+        /* Only include positive magnitudes in geometric mean */
+        if (magnitudes[i] > 1e-10f) {
+            log_sum += logf(magnitudes[i]);
+            valid_count++;
+        }
+    }
+
+    /* Need at least some valid magnitudes */
+    if (valid_count < 3 || total_mag < 1e-10f) {
+        return result;
+    }
+
+    /* Calculate arithmetic mean */
+    float arithmetic_mean = total_mag / (float)VF_NUM_TEST_FREQS;
+
+    /* Calculate geometric mean via log */
+    float log_geometric_mean = log_sum / (float)valid_count;
+    float geometric_mean = expf(log_geometric_mean);
+
+    /* Flatness = geometric / arithmetic (range 0-1) */
+    result.flatness = geometric_mean / arithmetic_mean;
+
+    /* Clamp to [0, 1] for safety */
+    if (result.flatness > 1.0f) result.flatness = 1.0f;
+    if (result.flatness < 0.0f) result.flatness = 0.0f;
+
+    /* Confidence factors */
+    /* Factor 1: Sample count - 300+ samples = full confidence */
+    float sample_factor = (float)num_samples / 300.0f;
+    if (sample_factor > 1.0f) sample_factor = 1.0f;
+
+    /* Factor 2: Power level - need reasonable power for reliable flatness */
+    float power_factor = (total_mag > 50.0f) ? 1.0f : total_mag / 50.0f;
+
+    /* Factor 3: Valid bin count - need most bins to have measurable signal */
+    float bin_factor = (float)valid_count / (float)VF_NUM_TEST_FREQS;
+
+    result.confidence = sample_factor * power_factor * bin_factor;
 
     return result;
 }
@@ -516,6 +599,9 @@ int detect_vf(const float *signal, uint16_t num_samples,
     /* Calculate spectral entropy for VF/organized rhythm discrimination */
     entropy_result_t ent = calculate_spectral_entropy(signal, num_samples, sample_rate);
 
+    /* Calculate spectral flatness - key discriminator for VF (chaotic spectrum) */
+    flatness_result_t flat = calculate_spectral_flatness(signal, num_samples, sample_rate);
+
     /*
      * Weighted evidence scoring with measurement confidence
      * Each criterion's contribution is scaled by measurement confidence.
@@ -544,17 +630,22 @@ int detect_vf(const float *signal, uint16_t num_samples,
     } else if (freq.frequency >= config->vf_freq_min &&
                freq.frequency <= config->vf_freq_max) {
         evidence_score += VF_EV_FREQ_GOOD * freq.confidence;
-    } else if (freq.frequency >= 2.5f && freq.frequency <= 12.0f) {
+    } else if (freq.frequency >= config->vf_penalty_freq_min &&
+               freq.frequency <= config->vf_penalty_freq_max) {
         evidence_score += VF_EV_FREQ_EDGE * freq.confidence;
     }
 
     /* Irregularity contribution - weighted by crossing rate confidence */
+    /* Only meaningful when QRS is absent or at very low rate (not organized) */
     if (qrs_absent) {
         evidence_score += VF_EV_QRS_ABSENT;
-    } else if (zcr > config->vf_zcr_high_thresh || tcr.rate > config->vf_tcr_high_thresh) {
-        evidence_score += VF_EV_HIGH_IRREG * tcr.confidence;
-    } else if (zcr > config->vf_zcr_mod_thresh || tcr.rate > config->vf_tcr_mod_thresh) {
-        evidence_score += VF_EV_MOD_IRREG * tcr.confidence;
+    } else if (!is_organized_tachy && qrs_rate <= config->vf_qrs_rate_penalty_thresh) {
+        /* QRS present but disorganized - check ZCR/TCR for VF characteristics */
+        if (zcr > config->vf_zcr_high_thresh || tcr.rate > config->vf_tcr_high_thresh) {
+            evidence_score += VF_EV_HIGH_IRREG * tcr.confidence;
+        } else if (zcr > config->vf_zcr_mod_thresh || tcr.rate > config->vf_tcr_mod_thresh) {
+            evidence_score += VF_EV_MOD_IRREG * tcr.confidence;
+        }
     }
 
     /* Entropy contribution - weighted by measurement confidence */
@@ -564,11 +655,29 @@ int detect_vf(const float *signal, uint16_t num_samples,
         evidence_score += VF_EV_ENTROPY_MOD * ent.confidence;
     }
 
+    /* Spectral flatness contribution - weighted by confidence, low weights to limit FP */
+    if (flat.flatness > config->vf_flatness_high_thresh) {
+        evidence_score += VF_EV_FLATNESS_HIGH * flat.confidence;
+    } else if (flat.flatness > config->vf_flatness_mod_thresh) {
+        evidence_score += VF_EV_FLATNESS_MOD * flat.confidence;
+    }
+
     /* Organized rhythm penalties (not scaled - penalties are definitive) */
+    float rr_cv = calculate_rr_cv(qrs_result, sample_rate);
+    uint8_t is_regular_qrs = (rr_cv >= 0 && rr_cv < config->vf_org_cv_thresh);
+    uint8_t freq_outside_vf = (freq.frequency < config->vf_penalty_freq_min ||
+                               freq.frequency > config->vf_penalty_freq_max);
+
     if (is_organized_tachy) {
         evidence_score += VF_EV_ORGANIZED_PENALTY;
     } else if (qrs_rate > config->vf_qrs_rate_penalty_thresh) {
-        evidence_score += VF_EV_QRS_PRESENT_PENALTY;
+        if (freq_outside_vf) {
+            /* Strong penalty: frequency outside VF range indicates organized rhythm */
+            evidence_score += VF_EV_QRS_FREQ_PENALTY;
+        } else if (is_regular_qrs) {
+            /* Weak penalty: VF frequency but regular QRS - could be VF with false detections */
+            evidence_score += VF_EV_QRS_REGULAR_PENALTY;
+        }
     }
 
     /* Detection decision based on evidence threshold */
@@ -596,14 +705,20 @@ int detect_vf(const float *signal, uint16_t num_samples,
     /* Track which criteria contributed below "good" levels */
     if (amplitude <= 200.0f)  /* < VF_EV_AMP_MEDIUM */
         result->diag_fail_reason |= DIAG_FAIL_AMPLITUDE;
-    if (freq.frequency < 5.0f || freq.frequency > 8.0f)  /* < VF_EV_FREQ_OPTIMAL */
+    if (freq.frequency < config->vf_penalty_freq_min || freq.frequency > config->vf_penalty_freq_max)
         result->diag_fail_reason |= DIAG_FAIL_FREQUENCY;
+    if (freq.frequency < 5.0f || freq.frequency > 8.0f)  /* Sub-optimal freq (not 5-8 Hz) */
+        result->diag_fail_reason |= DIAG_FAIL_FREQ_SUBOPT;
     if (!qrs_absent && zcr <= 0.25f && tcr.rate <= 0.5f)  /* < VF_EV_HIGH_IRREG */
         result->diag_fail_reason |= DIAG_FAIL_IRREGULARITY;
     if (is_organized_tachy)
         result->diag_fail_reason |= DIAG_FAIL_ORGANIZED;
+    if (qrs_rate > config->vf_qrs_rate_penalty_thresh)  /* QRS penalty applied */
+        result->diag_fail_reason |= DIAG_FAIL_QRS_PENALTY;
     if (evidence_score >= config->vf_evidence_threshold - 1.0f)
         result->diag_fail_reason |= DIAG_FAIL_CONFIDENCE;
+    if (evidence_score < config->vf_evidence_threshold - 1.0f)  /* Well below threshold */
+        result->diag_fail_reason |= DIAG_FAIL_LOW_EVIDENCE;
 #endif
 
     return EKG_SUCCESS;

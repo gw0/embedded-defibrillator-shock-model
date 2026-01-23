@@ -38,6 +38,12 @@ typedef struct {
     float confidence;    /* Confidence in measurement [0, 1] */
 } crossing_result_t;
 
+/* Spectral flatness result */
+typedef struct {
+    float flatness;      /* Spectral flatness [0, 1] - geometric/arithmetic mean ratio */
+    float confidence;    /* Confidence in measurement [0, 1] */
+} flatness_result_t;
+
 /* Failure reason codes - compile with -DDIAG_ENABLED to enable */
 #ifdef DIAG_ENABLED
 #define DIAG_FAIL_NONE             0x00
@@ -46,6 +52,9 @@ typedef struct {
 #define DIAG_FAIL_IRREGULARITY     0x04
 #define DIAG_FAIL_ORGANIZED        0x08
 #define DIAG_FAIL_CONFIDENCE       0x10
+#define DIAG_FAIL_FREQ_SUBOPT      0x20  /* Freq in range but not optimal (5-8 Hz) */
+#define DIAG_FAIL_LOW_EVIDENCE     0x40  /* Evidence well below threshold */
+#define DIAG_FAIL_QRS_PENALTY      0x80  /* QRS present penalty applied */
 #endif
 
 /**
@@ -172,6 +181,24 @@ uint8_t check_organized_tachycardia(const qrs_detection_result_t *qrs_result,
  */
 entropy_result_t calculate_spectral_entropy(const float *signal, uint16_t num_samples,
                                             uint16_t sample_rate);
+
+/**
+ * Calculate spectral flatness for VF detection
+ *
+ * Flatness = geometric_mean(magnitudes) / arithmetic_mean(magnitudes)
+ * VF: ~0.7-1.0 (chaotic, spectrally flat)
+ * Organized rhythms: ~0.1-0.4 (peaked spectrum)
+ *
+ * This is a key discriminator because VF has no dominant frequency
+ * while organized rhythms (NSR, VT, SVT) have clear spectral peaks.
+ *
+ * @param signal       Input signal
+ * @param num_samples  Number of samples
+ * @param sample_rate  Sample rate in Hz
+ * @return             flatness_result_t with flatness and confidence
+ */
+flatness_result_t calculate_spectral_flatness(const float *signal, uint16_t num_samples,
+                                               uint16_t sample_rate);
 
 /**
  * Detect Ventricular Fibrillation

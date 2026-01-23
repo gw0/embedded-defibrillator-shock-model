@@ -44,11 +44,10 @@
 #define VT_CONFIDENCE_THRESHOLD 0.70f  /* Confidence threshold for VT */
 
 /* VF Detection */
-#define VF_FREQ_MIN           4.5f    /* Hz */
+#define VF_FREQ_MIN           3.5f    /* Hz */
 #define VF_FREQ_MAX           9.5f   /* Hz - extended for fast VF */
 #define VF_ZCR_THRESHOLD      0.25f   /* Zero-crossing rate threshold */
 #define VF_QRS_RATE_THRESHOLD 0.5f    /* QRS per second (below = absent) */
-#define VF_CONFIDENCE_THRESHOLD 0.95f  /* Confidence threshold */
 #define VF_MIN_AMPLITUDE      200.0f   /* Minimum amplitude - lowered to catch more VF */
 #define VF_DOMINANCE_THRESHOLD 0.40f  /* VF is chaotic - no single freq dominates */
 #define VF_FINE_AMPLITUDE_MAX 250.0f  /* Extended fine VF detection window */
@@ -56,6 +55,10 @@
 #define VF_NOISE_FLOOR_MULT   3.0f    /* VF threshold = noise_floor * this multiplier */
 #define VF_AMPLITUDE_THRESHOLD_RATIO 0.05f  /* Ratio of peak for threshold crossings */
 #define VF_EVIDENCE_THRESHOLD 3.0f    /* Minimum evidence score for VF detection */
+
+/* Spectral Flatness Thresholds (VF is spectrally flat, organized rhythms have peaked spectrum) */
+#define VF_FLATNESS_HIGH_THRESH   0.7f   /* High flatness threshold (clearly chaotic) */
+#define VF_FLATNESS_MOD_THRESH    0.5f   /* Moderate flatness threshold */
 
 /* Goertzel frequencies for VF detection - 0.5 Hz resolution, extended range 2.5-12 Hz */
 #define VF_NUM_TEST_FREQS     20
@@ -111,7 +114,6 @@ typedef struct {
     float vf_freq_min;             /* Hz */
     float vf_freq_max;             /* Hz */
     float vf_zcr_threshold;        /* zero-crossing rate */
-    float vf_confidence_threshold; /* 0.0-1.0 */
     float vf_min_amplitude;        /* minimum amplitude */
 
     /* Fine VF Detection Parameters (for improved sensitivity) */
@@ -123,6 +125,11 @@ typedef struct {
 
     /* Evidence Scoring Parameters */
     float vf_evidence_threshold;   /* Minimum evidence score for VF detection */
+    float vf_confidence_threshold; /* Minimum confidence for VF shock decision (default: 0.75) */
+
+    /* QRS Penalty Frequency Range (for penalty exemption) */
+    float vf_penalty_freq_min;     /* Min freq for penalty exemption (default: 2.5 Hz) */
+    float vf_penalty_freq_max;     /* Max freq for penalty exemption (default: 12.0 Hz) */
 
     /* Evidence Amplitude Thresholds (for scoring tiers) */
     float vf_amp_high_thresh;      /* Amplitude for high evidence (default: 300) */
@@ -148,6 +155,10 @@ typedef struct {
     /* QRS Rate Penalty */
     float vf_qrs_rate_penalty_thresh; /* QRS rate threshold for penalty (default: 0.8) */
 
+    /* Spectral Flatness Thresholds */
+    float vf_flatness_high_thresh;    /* High flatness threshold (default: 0.7) */
+    float vf_flatness_mod_thresh;     /* Moderate flatness threshold (default: 0.5) */
+
     /* VT Bayesian Scoring Boundaries */
     float vt_hr_high_thresh;       /* HR for additional VT evidence (default: 150) */
     float vt_qrs_vwide_thresh;     /* QRS width for very wide (default: 140) */
@@ -163,7 +174,6 @@ static const ekg_config_t EKG_DEFAULT_CONFIG = {
     .vf_freq_min = VF_FREQ_MIN,
     .vf_freq_max = VF_FREQ_MAX,
     .vf_zcr_threshold = VF_ZCR_THRESHOLD,
-    .vf_confidence_threshold = VF_CONFIDENCE_THRESHOLD,
     .vf_min_amplitude = VF_MIN_AMPLITUDE,
     .vf_dominance_threshold = VF_DOMINANCE_THRESHOLD,
     .vf_fine_amplitude_max = VF_FINE_AMPLITUDE_MAX,
@@ -171,6 +181,9 @@ static const ekg_config_t EKG_DEFAULT_CONFIG = {
     .vf_noise_floor_mult = VF_NOISE_FLOOR_MULT,
     .vf_amplitude_thresh_ratio = VF_AMPLITUDE_THRESHOLD_RATIO,
     .vf_evidence_threshold = VF_EVIDENCE_THRESHOLD,
+    .vf_confidence_threshold = 0.50f,
+    .vf_penalty_freq_min = 2.5f,
+    .vf_penalty_freq_max = 12.0f,
 
     /* Evidence Amplitude Thresholds */
     .vf_amp_high_thresh = 300.0f,
@@ -194,7 +207,11 @@ static const ekg_config_t EKG_DEFAULT_CONFIG = {
     .vf_org_cv_thresh = 15.0f,
 
     /* QRS Rate Penalty */
-    .vf_qrs_rate_penalty_thresh = 0.8f,
+    .vf_qrs_rate_penalty_thresh = 0.70f,
+
+    /* Spectral Flatness Thresholds */
+    .vf_flatness_high_thresh = VF_FLATNESS_HIGH_THRESH,
+    .vf_flatness_mod_thresh = VF_FLATNESS_MOD_THRESH,
 
     /* VT Bayesian Boundaries */
     .vt_hr_high_thresh = 150.0f,
@@ -249,8 +266,13 @@ static const ekg_config_t EKG_DEFAULT_CONFIG = {
 #define VF_EV_ENTROPY_HIGH        1.5f   /* entropy > 0.6 */
 #define VF_EV_ENTROPY_MOD         0.5f   /* entropy > 0.4 */
 
+/* Spectral Flatness weights - low to avoid overwhelming on NSR/SVT */
+#define VF_EV_FLATNESS_HIGH       0.5f   /* flatness > 0.7 - slight positive VF indicator */
+#define VF_EV_FLATNESS_MOD        0.25f  /* flatness > 0.5 - minimal VF indicator */
+
 /* Organized rhythm penalties */
 #define VF_EV_ORGANIZED_PENALTY  -3.0f   /* is_organized_tachy */
-#define VF_EV_QRS_PRESENT_PENALTY -3.0f  /* qrs_rate > 0.8 */
+#define VF_EV_QRS_FREQ_PENALTY   -1.5f   /* QRS present + frequency outside VF range */
+#define VF_EV_QRS_REGULAR_PENALTY -0.5f  /* QRS present + regular RR intervals in VF freq range */
 
 #endif /* EKG_CONFIG_H */

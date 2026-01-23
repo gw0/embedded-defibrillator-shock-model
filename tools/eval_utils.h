@@ -81,9 +81,12 @@ typedef struct {
 typedef struct {
     uint32_t diag_amplitude_fails;
     uint32_t diag_frequency_fails;
+    uint32_t diag_freq_subopt_fails;
     uint32_t diag_irregularity_fails;
     uint32_t diag_organized_fails;
+    uint32_t diag_qrs_penalty_fails;
     uint32_t diag_confidence_fails;
+    uint32_t diag_low_evidence_fails;
     uint32_t diag_total_fn;
 } diag_fail_breakdown_t;
 #endif
