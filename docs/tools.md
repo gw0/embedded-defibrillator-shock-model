@@ -5,7 +5,7 @@ These tools are for training and evaluating the algorithm on a host system. The 
 ## Dataset Structure
 
 ```
-dataset/
+datasets/
 ├── SHOCK/      # Shockable rhythms
 └── NOSHOCK/    # Non-shockable rhythms
 ```
@@ -23,7 +23,7 @@ make ekg_csv
 
 ### Usage
 ```bash
-./bin/ekg_csv data/20251129-ECGrecording/PROCESSEDINTEGER/SHOCK/VFibCoarse.integer.csv
+./bin/ekg_csv datasets/SHOCK/<file>.csv
 ```
 
 ### Output
@@ -51,7 +51,7 @@ make ekg_train
 
 ### Usage
 ```bash
-./bin/ekg_train dataset/
+./bin/ekg_train datasets/
 ```
 
 ### Output Files
@@ -64,8 +64,8 @@ make ekg_train
 - Grid search over configurable parameter combinations
 
 ### Interpreting Results
-Recent training results show F1=32.8%, Sensitivity=100.0%, Specificity=2.4%:
-- Algorithm favors sensitivity (catches all true positives)
+Best training result: F2=96.0%, Sensitivity=99.9%, Specificity=79.8%:
+- Algorithm favors sensitivity (catches nearly all true positives)
 - Higher false positive rate acceptable for safety
 - Medically appropriate: missing a shockable rhythm is more dangerous than false alarm
 
@@ -91,7 +91,7 @@ make ekg_eval
 
 ### Usage
 ```bash
-./bin/ekg_eval dataset/
+./bin/ekg_eval datasets/
 ```
 
 ### Output
@@ -119,7 +119,7 @@ make ekg_eval_diag
 
 ### Usage
 ```bash
-./bin/ekg_eval_diag dataset/
+./bin/ekg_eval_diag datasets/
 ```
 
 ### Output

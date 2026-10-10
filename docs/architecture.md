@@ -54,15 +54,15 @@ Input: int16_t samples[300-1000] @ 100 Hz
 ### VT Detection (`vt_detector.c/h`)
 
 **Detection Criteria:**
-- Heart rate threshold: 140 bpm (default)
-- QRS width threshold: 110ms (wide QRS indicates ventricular origin)
-- Regularity check: CV < 15%
+- Heart rate threshold: 120 bpm (default)
+- QRS width threshold: 100ms (wide QRS indicates ventricular origin)
+- Regularity check: CV < 30%
 
 **Bayesian Confidence Calculation:**
 Uses log-likelihood ratios accumulated from multiple evidence sources:
-- Heart rate evidence (threshold and high threshold at 180 bpm)
-- QRS width evidence (wide >110ms and very wide >140ms)
-- RR regularity evidence (regular <15% CV and very regular <10% CV)
+- Heart rate evidence (threshold and high threshold at 150 bpm)
+- QRS width evidence (wide >100ms and very wide >130ms)
+- RR regularity evidence (regular <30% CV and very regular <12.5% CV)
 - Sustained duration evidence
 
 **QRS Width Measurement:**

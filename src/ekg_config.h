@@ -235,14 +235,14 @@ static const ekg_config_t EKG_DEFAULT_CONFIG = {
     /* VT Detection */
     .vt_hr_thresh = 120.0f,          /* bpm */
     .vt_qrs_width_ms = 100.0f,          /* ms */
-    .vt_regularity_cv = 25.0f,          /* percent */
+    .vt_regularity_cv = 30.0f,          /* percent */
     .vt_confidence_thresh = 0.70f,
     .vt_min_consecutive = 3,
 
     /* VT Bayesian Boundaries */
     .vt_hr_high_thresh = 150.0f,
-    .vt_qrs_vwide_thresh = 140.0f,
-    .vt_vregular_cv_thresh = 10.0f,
+    .vt_qrs_vwide_thresh = 130.0f,
+    .vt_vregular_cv_thresh = 12.5f,
 
     /* VT Bayesian Log-Likelihood Ratios */
     .lr_vt_hr_thresh_pos = 1.10f,
@@ -261,43 +261,43 @@ static const ekg_config_t EKG_DEFAULT_CONFIG = {
     .lr_vt_sustained_neg = -0.69f,
 
     /* VF Detection */
-    .vf_freq_min = 3.5f,
+    .vf_freq_min = 2.5f,
     .vf_freq_max = 9.5f,
-    .vf_dominance_thresh = 0.40f,
-    .vf_noise_floor_mult = 3.0f,
+    .vf_dominance_thresh = 0.35f,
+    .vf_noise_floor_mult = 2.0f,
     .vf_tcr_thresh_ratio = 0.05f,
     .vf_evidence_thresh = 3.0f,
     .vf_confidence_thresh = 0.50f,
     .vf_qrs_rate_thresh = 0.5f,
-    .vf_fine_amplitude_max = 250.0f,
+    .vf_fine_amplitude_max = 300.0f,
     .vf_penalty_freq_min = 2.5f,
     .vf_penalty_freq_max = 12.0f,
 
     /* VF Amplitude Thresholds */
     .vf_amp_high_thresh = 300.0f,
-    .vf_amp_medium_thresh = 200.0f,
-    .vf_amp_low_thresh = 100.0f,
-    .vf_amp_vlow_thresh = 50.0f,
+    .vf_amp_medium_thresh = 175.0f,
+    .vf_amp_low_thresh = 150.0f,
+    .vf_amp_vlow_thresh = 75.0f,
 
     /* VF Irregularity Thresholds */
-    .vf_zcr_high_thresh = 0.25f,
-    .vf_zcr_mod_thresh = 0.15f,
-    .vf_tcr_high_thresh = 0.5f,
-    .vf_tcr_mod_thresh = 0.3f,
+    .vf_zcr_high_thresh = 0.30f,
+    .vf_zcr_mod_thresh = 0.25f,
+    .vf_tcr_high_thresh = 0.30f,
+    .vf_tcr_mod_thresh = 0.30f,
 
     /* VF Entropy Thresholds */
-    .vf_entropy_high_thresh = 0.6f,
-    .vf_entropy_mod_thresh = 0.4f,
+    .vf_entropy_high_thresh = 0.70f,
+    .vf_entropy_mod_thresh = 0.30f,
 
     /* VF Spectral Flatness */
-    .vf_flatness_high_thresh = 0.7f,
-    .vf_flatness_mod_thresh = 0.5f,
+    .vf_flatness_high_thresh = 0.80f,
+    .vf_flatness_mod_thresh = 0.40f,
 
     /* VF Organized Rhythm Detection */
-    .vf_org_hr_min = 120.0f,
-    .vf_org_hr_max = 220.0f,
-    .vf_org_cv_thresh = 15.0f,
-    .vf_qrs_rate_penalty_thresh = 0.70f,
+    .vf_org_hr_min = 100.0f,
+    .vf_org_hr_max = 250.0f,
+    .vf_org_cv_thresh = 20.0f,
+    .vf_qrs_rate_penalty_thresh = 0.60f,
 
     /* VF Evidence Weights - Amplitude */
     .vf_ev_amp_high = 2.0f,
