@@ -1,6 +1,17 @@
-# ECG/EKG Defibrillator Shock Algorithm
+# ECG/EKG Defibrillator Shock Model for Embedded
 
-An ECG/EKG (electrocardiogram) signal analyzer for detecting ventricular arrhythmias and providing defibrillator shock recommendations.
+[![GitHub](https://img.shields.io/badge/GitHub-gw0%2Fembedded--defibrillator--shock--model-181717?logo=github)](https://github.com/gw0/embedded-defibrillator-shock-model)
+[![Sponsor](https://img.shields.io/badge/sponsor-%E2%9D%A4-red?logo=github-sponsors)](https://github.com/sponsors/gw0)
+
+An ECG/EKG (electrocardiogram) signal analyzer for detecting ventricular arrhythmias and providing defibrillator shock recommendations optimized for embedded systems achieving **96.0% F2-score**.
+
+- **Optimized for embedded systems** (C99, no external dependencies, <10 KB RAM, <10 KB Flash)
+- **Hardware floating-point** support for ARM Cortex-M33 FPU
+- **Real-time processing** at 100 Hz sample rate, 3-10s windows
+- **Training pipeline** with random/local/adaptive grid search over 30+ parameters
+- **Pan-Tompkins QRS detection** for identifying ventricular depolarizations
+- **Frequency domain analysis** using Goertzel algorithm for VF detection
+- **Time domain analysis** for rhythm characterization
 
 ## ⚠️ SAFETY NOTICE
 
@@ -21,15 +32,6 @@ This analyzer processes EKG signals in real-time on an ARM Cortex M33 microcontr
 
 The system recommends whether a defibrillator shock should be administered based on the detected rhythm.
 
-## Features
-
-- **Real-time processing** at 100 Hz sample rate
-- **Pan-Tompkins QRS detection** for identifying ventricular depolarizations
-- **Frequency domain analysis** using Goertzel algorithm for VF detection
-- **Time domain analysis** for rhythm characterization
-- **Optimized for embedded systems** (<10 KB RAM, <20 KB Flash)
-- **Hardware floating-point** support for ARM Cortex-M33 FPU
-
 ## Input Specifications
 
 - **Signal Type**: Single-lead EKG (Lead II equivalent)
@@ -38,7 +40,7 @@ The system recommends whether a defibrillator shock should be administered based
 - **Duration**: 3-10 seconds (300-1000 samples)
 - **Pre-filtering**: Baseline wander removed, noise filtered
 
-## Output
+## Output Specifications
 
 The analyzer provides:
 - **Shock recommendation** (yes/no)
@@ -47,9 +49,46 @@ The analyzer provides:
 - **Heart rate** (if detectable)
 - **Diagnostic information** (QRS count, dominant frequency)
 
+## Training
+
+### Dataset
+
+6286 labeled single-lead ECG windows as headerless CSV files at 100 Hz, 5s (500 measurements) or 8s (800 measurements):
+
+- **Shockable** (3123): ventricular fibrillation (coarse, fine)
+- **Non-shockable** (3163): normal sinus rhythm, ventricular (non-VF) arrhythmias, premature beats, supraventricular arrhythmias, and conduction abnormalities
+- **Labels**: encoded in file names (`shock-123059-vfib=coarse.csv` and `no-shock-084252-nsr=060.csv`)
+
+See [`datasets/README.md`](datasets/README.md) for the full description.
+
+### Training Pipeline
+
+```
+datasets/ ──► ekg_train ──► outputs/best_config.h ──► ekg_eval ──► src/ (embedded library)
+ labeled CSV   grid search     tuned parameters        metrics      ekg_analyze()
+               (F2 objective)                          per rhythm
+```
+
+### Training Results
+
+Evaluated with `ekg_eval` on the 5s dataset (6286 windows):
+
+| Metric | Before tuning | Tuned |
+|--------|--------------:|------:|
+| **F2-score** | 85.2% | **96.0%** |
+| Sensitivity (shockable) | 86.2% | 99.9% |
+| Specificity (non-shockable) | 80.5% | 79.8% |
+| Accuracy | 83.3% | 89.8% |
+
+Missing a shockable rhythm is far more dangerous than a false alarm, so training maximizes F2 (recall weighted over precision) and trades specificity for sensitivity. Results are measured on the same data used for tuning, without a held-out split.
+
 ## Building
 
 ### For Host System
+
+- GCC compiler with C99 support
+- Standard math library (-lm)
+
 ```bash
 make          # Default: host build
 make host     # Explicit host build
@@ -62,24 +101,19 @@ make help     # Show all available targets
 ```
 
 ### For ARM Cortex-M33
+
+- ARM GCC cross-compiler (`gcc-arm-none-eabi`)
+- ARM Cortex-M33 target support
+
 ```bash
 make arm      # Cross-compile for ARM
 ```
 
 ## Testing
+
 ```bash
 make test     # Build and run all tests
 ```
-
-## Requirements
-
-### Host Build
-- GCC compiler with C99 support
-- Standard math library (-lm)
-
-### ARM Build
-- ARM GCC cross-compiler (`arm-none-eabi-gcc`)
-- ARM Cortex-M33 target support
 
 ## Project Structure
 
@@ -172,6 +206,7 @@ See `docs/tools.md` for detailed usage information.
 - [`docs/development.md`](docs/development.md) - Development guidelines and constraints
 - [`docs/testing.md`](docs/testing.md) - Test suite documentation
 - [`docs/tools.md`](docs/tools.md) - CLI tools for training and evaluation
+- [`datasets/README.md`](datasets/README.md) - Dataset description
 
 ## Algorithm References
 
@@ -183,5 +218,6 @@ See `docs/tools.md` for detailed usage information.
 
 ## License
 
-Copyright &copy; 2025-2026 *gw0* [<http://gw.tnode.com/>] &lt;<gw.2026@ena.one>&gt;
+Copyright &copy; 2026 [gw0](https://gw.tnode.com/) &lt;<gw.2026@ena.one>&gt;. All rights reserved.
 
+If my work saves you time, money, or tokens, consider [sponsoring](https://github.com/sponsors/gw0) the work that keeps it maintained — and tell whoever else benefits, human or agent.
